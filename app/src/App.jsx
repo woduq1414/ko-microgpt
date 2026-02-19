@@ -59,6 +59,10 @@ const CHAPTER_TWO_LAYER_DEPTHS = [0.65, 1.0, 1.35]
 const ROTATION_STEPS = [-6, -3, -1, 1, 3, 6]
 const SIZE_CLASSES = ['text-base', 'text-lg', 'text-xl']
 const CHAPTER_TWO_BG_BASE_JAMO = [...CHOSEONG_COMPAT, ...JUNGSEONG_COMPAT]
+const EMBEDDING_POSITIVE_BASE = '#e9fce9'
+const EMBEDDING_POSITIVE_STRONG = '#22c55e'
+const EMBEDDING_NEGATIVE_BASE = '#feeaea'
+const EMBEDDING_NEGATIVE_STRONG = '#ef4444'
 
 const getInitialMatch = (query) => {
   if (typeof window === 'undefined') {
@@ -143,6 +147,66 @@ const decomposeKoreanNameToNfdTokens = (name) => {
   }
 
   return { syllables, tokens }
+}
+
+const toDisplayJamoForChapter3 = (nfdChar) => {
+  if (!nfdChar) {
+    return ''
+  }
+  const code = nfdChar.codePointAt(0)
+  if (!code) {
+    return nfdChar
+  }
+  if (code >= 0x1100 && code <= 0x1112) {
+    return CHOSEONG_COMPAT[code - 0x1100] ?? nfdChar
+  }
+  if (code >= 0x1161 && code <= 0x1175) {
+    return JUNGSEONG_COMPAT[code - 0x1161] ?? nfdChar
+  }
+  if (code >= 0x11a8 && code <= 0x11c2) {
+    return JONGSEONG_COMPAT[code - 0x11a7] ?? nfdChar
+  }
+  return nfdChar
+}
+
+const mixChannel = (from, to, ratio) => Math.round(from + (to - from) * ratio)
+
+const hexToRgb = (hexColor) => {
+  const normalized = hexColor.replace('#', '')
+  const expanded = normalized.length === 3 ? normalized.split('').map((char) => `${char}${char}`).join('') : normalized
+  const value = Number.parseInt(expanded, 16)
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  }
+}
+
+const interpolateHexColor = (fromColor, toColor, ratio) => {
+  const clamped = clamp(ratio, 0, 1)
+  const from = hexToRgb(fromColor)
+  const to = hexToRgb(toColor)
+  return `rgb(${mixChannel(from.r, to.r, clamped)} ${mixChannel(from.g, to.g, clamped)} ${mixChannel(from.b, to.b, clamped)})`
+}
+
+const getHeatColor = (value, maxAbs) => {
+  const ratio = clamp(Math.abs(value) / Math.max(maxAbs, 1e-8), 0, 1)
+  if (ratio < 0.02) {
+    return '#f7f7f7'
+  }
+  if (value >= 0) {
+    return interpolateHexColor(EMBEDDING_POSITIVE_BASE, EMBEDDING_POSITIVE_STRONG, ratio)
+  }
+  return interpolateHexColor(EMBEDDING_NEGATIVE_BASE, EMBEDDING_NEGATIVE_STRONG, ratio)
+}
+
+const rmsNormVector = (vector, epsilon = 1e-5) => {
+  if (!vector.length) {
+    return []
+  }
+  const ms = vector.reduce((accumulator, value) => accumulator + value * value, 0) / vector.length
+  const scale = 1 / Math.sqrt(ms + epsilon)
+  return vector.map((value) => value * scale)
 }
 
 const getCloudPosition = (index, isMobile) => {
@@ -587,6 +651,626 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
   )
 }
 
+function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
+  const tokenChars = snapshot?.tokenizer?.uchars ?? []
+  const tokenCount = tokenChars.length
+  const nEmbd = Number(snapshot?.n_embd ?? 16)
+  const finalDelayMs = 450
+  const positionCount = Math.min(Number(snapshot?.block_size ?? 16), snapshot?.wpe?.length ?? 0)
+  const [tokenIndex, setTokenIndex] = useState(0)
+  const [positionIndex, setPositionIndex] = useState(0)
+  const [openInfoKey, setOpenInfoKey] = useState(null)
+  const [isFinalPending, setIsFinalPending] = useState(false)
+  const [displayedFinalVector, setDisplayedFinalVector] = useState(() => {
+    const initialToken = snapshot?.wte?.[0] ?? []
+    const initialPosition = snapshot?.wpe?.[0] ?? []
+    const initialSum = Array.from(
+      { length: nEmbd },
+      (_, index) => Number(initialToken[index] ?? 0) + Number(initialPosition[index] ?? 0),
+    )
+    return rmsNormVector(initialSum)
+  })
+  const tokenRowRefs = useRef([])
+  const positionRowRefs = useRef([])
+  const sumRowRefs = useRef([])
+  const finalRowRefs = useRef([])
+  const positionColumnRef = useRef(null)
+  const sumColumnRef = useRef(null)
+  const finalColumnRef = useRef(null)
+  const flowLayerRef = useRef(null)
+  const sumToFinalTimelineRef = useRef(null)
+  const finalDelayTimeoutRef = useRef(null)
+  const animationCycleRef = useRef(0)
+  const safeTokenIndex = tokenCount ? ((tokenIndex % tokenCount) + tokenCount) % tokenCount : 0
+  const safePositionIndex = positionCount ? ((positionIndex % positionCount) + positionCount) % positionCount : 0
+
+  const tokenVector = useMemo(() => {
+    const row = snapshot?.wte?.[safeTokenIndex] ?? []
+    return Array.from({ length: nEmbd }, (_, index) => Number(row[index] ?? 0))
+  }, [nEmbd, safeTokenIndex, snapshot])
+
+  const positionVector = useMemo(() => {
+    const row = snapshot?.wpe?.[safePositionIndex] ?? []
+    return Array.from({ length: nEmbd }, (_, index) => Number(row[index] ?? 0))
+  }, [nEmbd, safePositionIndex, snapshot])
+
+  const sumVector = useMemo(
+    () => tokenVector.map((tokenValue, index) => tokenValue + positionVector[index]),
+    [positionVector, tokenVector],
+  )
+
+  const computedFinalVector = useMemo(() => rmsNormVector(sumVector), [sumVector])
+
+  const maxAbs = useMemo(() => {
+    return Math.max(
+      1e-8,
+      ...tokenVector.map((value) => Math.abs(value)),
+      ...positionVector.map((value) => Math.abs(value)),
+      ...sumVector.map((value) => Math.abs(value)),
+      ...computedFinalVector.map((value) => Math.abs(value)),
+      ...displayedFinalVector.map((value) => Math.abs(value)),
+    )
+  }, [computedFinalVector, displayedFinalVector, positionVector, sumVector, tokenVector])
+
+  useEffect(
+    () => () => {
+      if (finalDelayTimeoutRef.current) {
+        window.clearTimeout(finalDelayTimeoutRef.current)
+        finalDelayTimeoutRef.current = null
+      }
+      if (sumToFinalTimelineRef.current) {
+        sumToFinalTimelineRef.current.kill()
+        sumToFinalTimelineRef.current = null
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (openInfoKey === null) {
+      return undefined
+    }
+
+    const onPointerDown = (event) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('.embedding-help-wrap')) {
+        return
+      }
+      setOpenInfoKey(null)
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setOpenInfoKey(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [openInfoKey])
+
+  useLayoutEffect(() => {
+    const sumRows = sumRowRefs.current.slice(0, nEmbd).filter(Boolean)
+    const finalRows = finalRowRefs.current.slice(0, nEmbd).filter(Boolean)
+    const flowLayer = flowLayerRef.current
+    const positionColumnEl = positionColumnRef.current
+    const sumColumnEl = sumColumnRef.current
+    const finalColumnEl = finalColumnRef.current
+
+    if (!sumRows.length || !finalRows.length || !flowLayer) {
+      return undefined
+    }
+
+    if (finalDelayTimeoutRef.current) {
+      window.clearTimeout(finalDelayTimeoutRef.current)
+      finalDelayTimeoutRef.current = null
+    }
+    if (sumToFinalTimelineRef.current) {
+      sumToFinalTimelineRef.current.kill()
+      sumToFinalTimelineRef.current = null
+    }
+
+    flowLayer.innerHTML = ''
+    const flowLayerRect = flowLayer.getBoundingClientRect()
+    const createdNodes = []
+    const cycle = animationCycleRef.current + 1
+    animationCycleRef.current = cycle
+
+    const appendOperationStickerTimeline = ({
+      timeline,
+      label,
+      fromColumnEl,
+      toColumnEl,
+      startAt = 0,
+      variant = 'rms',
+    }) => {
+      const fromRect = fromColumnEl?.getBoundingClientRect()
+      const toRect = toColumnEl?.getBoundingClientRect()
+      if (!fromRect || !toRect) {
+        return
+      }
+
+      const centerX = (fromRect.right + toRect.left) * 0.5 - flowLayerRect.left
+      const centerY =
+        (fromRect.top + fromRect.bottom + toRect.top + toRect.bottom) * 0.25 -
+        flowLayerRect.top
+      const sticker = document.createElement('span')
+      sticker.className = `embedding-op-sticker embedding-op-sticker--${variant}`
+      sticker.textContent = label
+      sticker.style.left = `${centerX}px`
+      sticker.style.top = `${centerY}px`
+      flowLayer.appendChild(sticker)
+      createdNodes.push(sticker)
+
+      timeline.fromTo(
+        sticker,
+        { opacity: 0, scale: 0.86, rotate: -2 },
+        { opacity: 1, scale: 1.02, rotate: 1, duration: 0.12, ease: 'power2.out' },
+        startAt,
+      )
+      timeline.to(
+        sticker,
+        {
+          opacity: 0,
+          scale: 1.04,
+          rotate: 2,
+          duration: 0.22,
+          ease: 'power2.in',
+          onComplete: () => {
+            sticker.remove()
+          },
+        },
+        startAt + 0.22,
+      )
+    }
+
+    if (reducedMotion) {
+      const sumStageTimeline = gsap.timeline()
+      appendOperationStickerTimeline({
+        timeline: sumStageTimeline,
+        label: 'SUM',
+        fromColumnEl: positionColumnEl,
+        toColumnEl: sumColumnEl,
+        startAt: 0,
+        variant: 'sum',
+      })
+      sumStageTimeline.fromTo(
+        sumRows,
+        { opacity: 0.84 },
+        {
+          opacity: 1,
+          duration: 0.16,
+          stagger: 0.01,
+          ease: 'power2.out',
+          overwrite: 'auto',
+        },
+        0.08,
+      )
+
+      finalDelayTimeoutRef.current = window.setTimeout(() => {
+        if (animationCycleRef.current !== cycle) {
+          return
+        }
+
+        setDisplayedFinalVector(computedFinalVector)
+
+        const finalStageTimeline = gsap.timeline({
+          onComplete: () => {
+            if (animationCycleRef.current === cycle) {
+              setIsFinalPending(false)
+            }
+          },
+        })
+        appendOperationStickerTimeline({
+          timeline: finalStageTimeline,
+          label: 'RMSNORM',
+          fromColumnEl: sumColumnEl,
+          toColumnEl: finalColumnEl,
+          startAt: 0,
+          variant: 'rms',
+        })
+        finalStageTimeline.fromTo(
+          finalRows,
+          { opacity: 0.84 },
+          {
+            opacity: 1,
+            duration: 0.16,
+            stagger: 0.01,
+            ease: 'power2.out',
+            overwrite: 'auto',
+          },
+          0.08,
+        )
+        sumToFinalTimelineRef.current = finalStageTimeline
+      }, finalDelayMs)
+
+      return () => {
+        sumStageTimeline.kill()
+        if (finalDelayTimeoutRef.current) {
+          window.clearTimeout(finalDelayTimeoutRef.current)
+          finalDelayTimeoutRef.current = null
+        }
+        if (sumToFinalTimelineRef.current) {
+          sumToFinalTimelineRef.current.kill()
+          sumToFinalTimelineRef.current = null
+        }
+        createdNodes.forEach((node) => node.remove())
+        flowLayer.innerHTML = ''
+      }
+    }
+    const timeline = gsap.timeline()
+    appendOperationStickerTimeline({
+      timeline,
+      label: 'SUM',
+      fromColumnEl: positionColumnEl,
+      toColumnEl: sumColumnEl,
+      startAt: 0,
+      variant: 'sum',
+    })
+
+    for (let rowIndex = 0; rowIndex < nEmbd; rowIndex += 1) {
+      const tokenRow = tokenRowRefs.current[rowIndex]
+      const positionRow = positionRowRefs.current[rowIndex]
+      const sumRow = sumRowRefs.current[rowIndex]
+      if (!tokenRow || !positionRow || !sumRow) {
+        continue
+      }
+
+      const tokenRect = tokenRow.getBoundingClientRect()
+      const positionRect = positionRow.getBoundingClientRect()
+      const sumRect = sumRow.getBoundingClientRect()
+      const tokenStartX = tokenRect.left - flowLayerRect.left + tokenRect.width * 0.86
+      const tokenStartY = tokenRect.top - flowLayerRect.top + tokenRect.height / 2
+      const positionStartX = positionRect.left - flowLayerRect.left + positionRect.width * 0.86
+      const positionStartY = positionRect.top - flowLayerRect.top + positionRect.height / 2
+      const sumTargetX = sumRect.left - flowLayerRect.left + sumRect.width * 0.5
+      const sumTargetY = sumRect.top - flowLayerRect.top + sumRect.height / 2
+      const delay = rowIndex * 0.02
+
+      const tokenDot = document.createElement('span')
+      tokenDot.className = 'embedding-flow-dot embedding-flow-dot--token'
+      flowLayer.appendChild(tokenDot)
+      createdNodes.push(tokenDot)
+
+      timeline.fromTo(
+        tokenDot,
+        { x: tokenStartX, y: tokenStartY, opacity: 0, scale: 0.7 },
+        { opacity: 1, duration: 0.08, ease: 'power2.out' },
+        delay,
+      )
+      timeline.to(
+        tokenDot,
+        {
+          x: sumTargetX,
+          y: sumTargetY,
+          duration: 0.45,
+          ease: 'power2.out',
+        },
+        delay,
+      )
+      timeline.to(tokenDot, { opacity: 0, duration: 0.12, ease: 'power2.in' }, delay + 0.33)
+
+      const positionDot = document.createElement('span')
+      positionDot.className = 'embedding-flow-dot embedding-flow-dot--pos'
+      flowLayer.appendChild(positionDot)
+      createdNodes.push(positionDot)
+
+      timeline.fromTo(
+        positionDot,
+        { x: positionStartX, y: positionStartY, opacity: 0, scale: 0.7 },
+        { opacity: 1, duration: 0.08, ease: 'power2.out' },
+        delay,
+      )
+      timeline.to(
+        positionDot,
+        {
+          x: sumTargetX,
+          y: sumTargetY,
+          duration: 0.45,
+          ease: 'power2.out',
+        },
+        delay,
+      )
+      timeline.to(positionDot, { opacity: 0, duration: 0.12, ease: 'power2.in' }, delay + 0.33)
+    }
+
+    timeline.fromTo(
+      sumRows,
+      { scale: 1, opacity: 0.9 },
+      {
+        scale: 1.02,
+        opacity: 1,
+        duration: 0.15,
+        repeat: 1,
+        yoyo: true,
+        stagger: 0.02,
+        ease: 'power2.out',
+      },
+      0.06,
+    )
+
+    finalDelayTimeoutRef.current = window.setTimeout(() => {
+      if (animationCycleRef.current !== cycle) {
+        return
+      }
+
+      setDisplayedFinalVector(computedFinalVector)
+
+      const sumToFinalTimeline = gsap.timeline({
+        onComplete: () => {
+          if (animationCycleRef.current === cycle) {
+            setIsFinalPending(false)
+          }
+        },
+      })
+      appendOperationStickerTimeline({
+        timeline: sumToFinalTimeline,
+        label: 'RMSNORM',
+        fromColumnEl: sumColumnEl,
+        toColumnEl: finalColumnEl,
+        startAt: 0,
+        variant: 'rms',
+      })
+
+      for (let rowIndex = 0; rowIndex < nEmbd; rowIndex += 1) {
+        const sumRow = sumRowRefs.current[rowIndex]
+        const finalRow = finalRowRefs.current[rowIndex]
+        if (!sumRow || !finalRow) {
+          continue
+        }
+
+        const sumRect = sumRow.getBoundingClientRect()
+        const finalRect = finalRow.getBoundingClientRect()
+        const sumStartX = sumRect.left - flowLayerRect.left + sumRect.width * 0.85
+        const sumStartY = sumRect.top - flowLayerRect.top + sumRect.height / 2
+        const finalTargetX = finalRect.left - flowLayerRect.left + finalRect.width * 0.5
+        const finalTargetY = finalRect.top - flowLayerRect.top + finalRect.height / 2
+        const delay = 0.08 + rowIndex * 0.02
+
+        const sumDot = document.createElement('span')
+        sumDot.className = 'embedding-flow-dot embedding-flow-dot--sum'
+        flowLayer.appendChild(sumDot)
+        createdNodes.push(sumDot)
+
+        sumToFinalTimeline.fromTo(
+          sumDot,
+          { x: sumStartX, y: sumStartY, opacity: 0, scale: 0.74 },
+          { opacity: 1, duration: 0.08, ease: 'power2.out' },
+          delay,
+        )
+        sumToFinalTimeline.to(
+          sumDot,
+          {
+            x: finalTargetX,
+            y: finalTargetY,
+            duration: 0.45,
+            ease: 'power2.out',
+          },
+          delay,
+        )
+        sumToFinalTimeline.to(sumDot, { opacity: 0, duration: 0.12, ease: 'power2.in' }, delay + 0.33)
+      }
+
+      sumToFinalTimeline.fromTo(
+        finalRows,
+        { scale: 1, opacity: 0.9 },
+        {
+          scale: 1.02,
+          opacity: 1,
+          duration: 0.15,
+          repeat: 1,
+          yoyo: true,
+          stagger: 0.02,
+          ease: 'power2.out',
+        },
+        0.06,
+      )
+
+      sumToFinalTimelineRef.current = sumToFinalTimeline
+    }, finalDelayMs)
+
+    return () => {
+      timeline.kill()
+      if (finalDelayTimeoutRef.current) {
+        window.clearTimeout(finalDelayTimeoutRef.current)
+        finalDelayTimeoutRef.current = null
+      }
+      if (sumToFinalTimelineRef.current) {
+        sumToFinalTimelineRef.current.kill()
+        sumToFinalTimelineRef.current = null
+      }
+      createdNodes.forEach((dot) => dot.remove())
+      flowLayer.innerHTML = ''
+    }
+  }, [computedFinalVector, finalDelayMs, nEmbd, reducedMotion, safePositionIndex, safeTokenIndex])
+
+  if (!tokenCount || !positionCount) {
+    return null
+  }
+
+  const moveToken = (direction) => {
+    setIsFinalPending(true)
+    setTokenIndex((prevIndex) => (prevIndex + direction + tokenCount) % tokenCount)
+    setOpenInfoKey(null)
+  }
+  const movePosition = (direction) => {
+    setIsFinalPending(true)
+    setPositionIndex((prevIndex) => (prevIndex + direction + positionCount) % positionCount)
+    setOpenInfoKey(null)
+  }
+  const displayChar = toDisplayJamoForChapter3(tokenChars[safeTokenIndex])
+  const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
+  const columns = [
+    {
+      key: 'token',
+      title: 'TOKEN EMBEDDING',
+      infoTitle: 'Token Embedding',
+      infoBody: '음운 자체 의미를 담는 벡터입니다.',
+      vector: tokenVector,
+      rowRef: tokenRowRefs,
+      columnRef: null,
+    },
+    {
+      key: 'position',
+      title: 'POSITION EMBEDDING',
+      infoTitle: 'Position Embedding',
+      infoBody: '토큰이 시퀀스의 몇 번째인지 알려주는 벡터입니다.',
+      vector: positionVector,
+      rowRef: positionRowRefs,
+      columnRef: positionColumnRef,
+    },
+    {
+      key: 'sum',
+      title: 'SUM EMBEDDING',
+      infoTitle: 'Sum Embedding',
+      infoBody: '토큰 임베딩과 위치 임베딩을 차원별로 더한 중간 입력입니다.',
+      vector: sumVector,
+      rowRef: sumRowRefs,
+      columnRef: sumColumnRef,
+    },
+    {
+      key: 'final',
+      title: 'FINAL EMBEDDING',
+      infoTitle: 'Final Embedding',
+      infoBody: '합 벡터를 RMSNorm으로 스케일링한 최종 입력입니다. x / sqrt(mean(x^2)+1e-5)',
+      vector: displayedFinalVector,
+      rowRef: finalRowRefs,
+      columnRef: finalColumnRef,
+    },
+  ]
+
+  return (
+    <div className="embedding-demo-wrap reveal">
+      <div className="embedding-controls">
+        <div className="embedding-nav">
+          <p className="embedding-nav-title">예시 음운</p>
+          <div className="embedding-nav-inner">
+            <button
+              type="button"
+              className="embedding-nav-arrow"
+              onClick={() => moveToken(-1)}
+              aria-label="이전 음운"
+            >
+              <span className="embedding-nav-arrow-shape embedding-nav-arrow-shape-left" />
+            </button>
+            <p className="embedding-nav-pill">
+              <span className="embedding-nav-pill-char">{displayChar}</span>
+              <span className="embedding-nav-pill-meta">ID {safeTokenIndex}</span>
+            </p>
+            <button
+              type="button"
+              className="embedding-nav-arrow"
+              onClick={() => moveToken(1)}
+              aria-label="다음 음운"
+            >
+              <span className="embedding-nav-arrow-shape embedding-nav-arrow-shape-right" />
+            </button>
+          </div>
+        </div>
+
+        <div className="embedding-nav">
+          <p className="embedding-nav-title">위치 인덱스</p>
+          <div className="embedding-nav-inner">
+            <button
+              type="button"
+              className="embedding-nav-arrow"
+              onClick={() => movePosition(-1)}
+              aria-label="이전 위치 인덱스"
+            >
+              <span className="embedding-nav-arrow-shape embedding-nav-arrow-shape-left" />
+            </button>
+            <p className="embedding-nav-pill">
+              <span className="embedding-nav-pill-char">POS {safePositionIndex}</span>
+              <span className="embedding-nav-pill-meta">0 ~ {positionCount - 1}</span>
+            </p>
+            <button
+              type="button"
+              className="embedding-nav-arrow"
+              onClick={() => movePosition(1)}
+              aria-label="다음 위치 인덱스"
+            >
+              <span className="embedding-nav-arrow-shape embedding-nav-arrow-shape-right" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className={`embedding-grid-wrap ${isFinalPending ? 'embedding-grid-wrap--pending' : ''}`}>
+        <div className="embedding-grid">
+          {columns.map((column) => {
+            const isFlashColumn = column.key === 'sum' || column.key === 'final'
+            const isInfoOpen = openInfoKey === column.key
+            return (
+              <section
+                key={column.key}
+                ref={(node) => {
+                  if (column.columnRef) {
+                    column.columnRef.current = node
+                  }
+                }}
+                className={`embedding-col reveal ${column.key === 'sum' ? 'embedding-col--sum' : ''} ${column.key === 'final' ? 'embedding-col--final' : ''}`}
+              >
+                <div className="embedding-col-head">
+                  <p className="embedding-col-title">{column.title}</p>
+                  <div className="embedding-help-wrap">
+                    <button
+                      type="button"
+                      className="embedding-help-btn"
+                      onClick={() => {
+                        setOpenInfoKey((prevKey) => (prevKey === column.key ? null : column.key))
+                      }}
+                      aria-label={`${column.title} 개념 설명`}
+                      aria-expanded={isInfoOpen}
+                      aria-controls={`embedding-help-${column.key}`}
+                    >
+                      ?
+                    </button>
+                    {isInfoOpen ? (
+                      <div id={`embedding-help-${column.key}`} role="note" className="embedding-help-popover">
+                        <p className="embedding-help-title">{column.infoTitle}</p>
+                        <p className="embedding-help-text">{column.infoBody}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="embedding-col-rows">
+                  {column.vector.map((value, rowIndex) => {
+                    const ratio = clamp(Math.abs(value) / maxAbs, 0, 1)
+                    return (
+                      <div
+                        key={`${column.key}-${rowIndex}`}
+                        ref={(node) => {
+                          column.rowRef.current[rowIndex] = node
+                        }}
+                        className={`embedding-row ${isFlashColumn ? 'embedding-sum-row--flash' : ''}`}
+                        style={{
+                          backgroundColor: getHeatColor(value, maxAbs),
+                        }}
+                      >
+                        <span className={`embedding-row-index ${valueTextClass}`}>{rowIndex}</span>
+                        <span className={`embedding-value ${valueTextClass}`} style={{ color: ratio > 0.8 ? '#fff' : '#000' }}>
+                          {value.toFixed(2)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+
+        <div ref={flowLayerRef} className="embedding-flow-layer" aria-hidden="true" />
+      </div>
+    </div>
+  )
+}
+
 const lessonSections = [
   {
     id: 'lesson-1',
@@ -619,15 +1303,15 @@ const lessonSections = [
   {
     id: 'lesson-3',
     label: 'CHAPTER 03',
-    title: 'TRAINING LOOP',
+    title: 'EMBEDDING',
     description:
-      'The model learns next-token prediction with custom autograd and Adam updates. Even minimalist code can teach full LM fundamentals.',
+      '토큰 임베딩과 위치 임베딩을 더해 모델 입력 임베딩을 만듭니다. 어떤 음운이 어느 위치에 놓였는지에 따라 최종 벡터가 달라집니다.',
     points: [
-      'Cross-entropy from softmax probabilities over target tokens.',
-      'Per-step Adam with bias correction and lr decay.',
-      'Checkpoint stores config, tokenizer, params, dataset names.',
+      '각 토큰은 길이 16의 숫자 벡터(토큰 임베딩)로 변환돼요.',
+      '현재 위치도 길이 16의 벡터(위치 임베딩)로 표현돼요.',
+      '두 벡터를 같은 차원끼리 더한 값이 모델 입력이 돼요.',
     ],
-    takeaway: 'This is a readable from-scratch LM, ideal for teaching internals.',
+    takeaway: '같은 음운이라도 위치가 바뀌면 입력 임베딩이 달라집니다.',
     bgClass: 'bg-white',
   },
 ]
@@ -639,6 +1323,9 @@ function App() {
   const [chapterTwoTokenizer, setChapterTwoTokenizer] = useState(null)
   const [tokenizerStatus, setTokenizerStatus] = useState('loading')
   const [tokenizerError, setTokenizerError] = useState('')
+  const [embeddingSnapshot, setEmbeddingSnapshot] = useState(null)
+  const [embeddingStatus, setEmbeddingStatus] = useState('loading')
+  const [embeddingError, setEmbeddingError] = useState('')
 
   useEffect(() => {
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -690,6 +1377,59 @@ function App() {
     }
 
     loadTokenizer()
+
+    return () => {
+      isActive = false
+      controller.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    let isActive = true
+    const controller = new AbortController()
+
+    const loadEmbeddingSnapshot = async () => {
+      setEmbeddingStatus('loading')
+      setEmbeddingError('')
+
+      try {
+        const response = await fetch('/data/ko_embedding_snapshot.json', { signal: controller.signal })
+        if (!response.ok) {
+          throw new Error('failed to fetch embedding snapshot')
+        }
+
+        const payload = await response.json()
+        const isValid =
+          Number(payload?.n_embd) > 0 &&
+          Number(payload?.block_size) > 0 &&
+          Array.isArray(payload?.tokenizer?.uchars) &&
+          typeof payload?.tokenizer?.bos === 'number' &&
+          Array.isArray(payload?.wte) &&
+          Array.isArray(payload?.wpe) &&
+          Array.isArray(payload?.wte?.[0]) &&
+          Array.isArray(payload?.wpe?.[0])
+
+        if (!isValid) {
+          throw new Error('invalid embedding snapshot payload')
+        }
+
+        if (!isActive) {
+          return
+        }
+
+        setEmbeddingSnapshot(payload)
+        setEmbeddingStatus('ready')
+      } catch (error) {
+        if (!isActive || error.name === 'AbortError') {
+          return
+        }
+        setEmbeddingSnapshot(null)
+        setEmbeddingStatus('error')
+        setEmbeddingError('임베딩 스냅샷 로드 실패')
+      }
+    }
+
+    loadEmbeddingSnapshot()
 
     return () => {
       isActive = false
@@ -895,7 +1635,7 @@ function App() {
               href="#lesson-3"
               className="neo-btn bg-neo-secondary px-8 py-4 text-sm font-black uppercase tracking-[0.14em]"
             >
-              Jump To Training
+              Jump To Embedding
             </a>
           </div>
         </div>
@@ -948,6 +1688,59 @@ function App() {
                   {tokenizerStatus === 'ready' && chapterTwoTokenizer ? (
                     <ChapterTwoTokenizationDemo
                       tokenizer={chapterTwoTokenizer}
+                      reducedMotion={reducedMotion}
+                      isMobile={isMobile}
+                    />
+                  ) : null}
+                </div>
+              </section>
+            )
+          }
+
+          if (index === 2) {
+            return (
+              <section
+                id={section.id}
+                key={section.id}
+                className={`snap-section edu-panel chapter-three-section relative flex min-h-screen items-center border-b-8 border-black ${section.bgClass}`}
+              >
+                <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-45" />
+                <div aria-hidden="true" className="absolute inset-0 texture-noise opacity-15" />
+
+                <div className="relative z-10 mx-auto w-full max-w-7xl px-6 py-8 md:px-12 md:py-10">
+                  <article className="reveal max-w-6xl">
+                    <p className="inline-block -rotate-2 border-4 border-black bg-neo-secondary px-4 py-2 text-sm font-black tracking-[0.22em]">
+                      {section.label}
+                    </p>
+
+                    <h2 className="mt-4 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-tight sm:text-5xl md:text-6xl">
+                      <span className="inline-block rotate-1 border-4 border-black bg-neo-accent px-4 py-2">
+                        {section.title}
+                      </span>
+                    </h2>
+
+                    <p className="mt-5 max-w-[100%] border-4 border-black bg-white p-4 text-base font-bold leading-relaxed shadow-[6px_6px_0px_0px_#000]">
+                      {section.description}
+                    </p>
+                  </article>
+
+                  {embeddingStatus === 'loading' ? (
+                    <div className="token-state-card reveal">
+                      <p className="text-sm font-black uppercase tracking-[0.2em]">EMBEDDING SNAPSHOT</p>
+                      <p className="mt-3 text-lg font-bold">임베딩 스냅샷을 불러오는 중...</p>
+                    </div>
+                  ) : null}
+
+                  {embeddingStatus === 'error' ? (
+                    <div className="token-state-card reveal">
+                      <p className="text-sm font-black uppercase tracking-[0.2em]">EMBEDDING SNAPSHOT</p>
+                      <p className="mt-3 text-lg font-bold">{embeddingError || '임베딩 스냅샷 로드 실패'}</p>
+                    </div>
+                  ) : null}
+
+                  {embeddingStatus === 'ready' && embeddingSnapshot ? (
+                    <ChapterThreeEmbeddingDemo
+                      snapshot={embeddingSnapshot}
                       reducedMotion={reducedMotion}
                       isMobile={isMobile}
                     />
