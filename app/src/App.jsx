@@ -1,6 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import HeroSection from './components/sections/HeroSection'
+import ChapterOneSection from './components/sections/ChapterOneSection'
+import ChapterTwoSection from './components/sections/ChapterTwoSection'
+import ChapterThreeSection from './components/sections/ChapterThreeSection'
+import FooterSection from './components/sections/FooterSection'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -1591,6 +1596,10 @@ function App() {
     }
   }, [reducedMotion])
 
+  const chapterOneSection = lessonSections[0]
+  const chapterTwoSection = lessonSections[1]
+  const chapterThreeSection = lessonSections[2]
+
   return (
     <div ref={pageRef} className="relative overflow-x-clip bg-neo-cream font-space text-black">
       <div
@@ -1600,221 +1609,68 @@ function App() {
         <div className="scroll-progress-fill h-full w-full origin-top scale-y-0 bg-neo-accent" />
       </div>
 
-      <header className="snap-section relative min-h-screen border-b-8 border-black bg-neo-cream">
-        <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-70" />
-        <div aria-hidden="true" className="absolute inset-0 texture-halftone opacity-20" />
-
-        <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col justify-center px-6 py-16 md:px-12">
-          <p className="hero-sticker inline-block w-fit -rotate-2 border-4 border-black bg-neo-accent px-5 py-2 text-sm font-black tracking-[0.22em]">
-            EDUCATION MODE
-          </p>
-
-          <h1 className="mt-8 max-w-6xl text-5xl font-black uppercase leading-[0.85] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
-            <span className="hero-sticker inline-block -rotate-1 border-4 border-black bg-white px-4 py-2">
-              FULL-SCREEN
-            </span>{' '}
-            <span className="hero-sticker inline-block rotate-1 border-4 border-black bg-neo-secondary px-4 py-2">
-              SCROLL
-            </span>{' '}
-            <span className="hero-sticker display-stroke inline-block">LESSON</span>
-          </h1>
-
-          <p className="hero-sticker mt-10 max-w-3xl -rotate-1 border-4 border-black bg-white p-6 text-lg font-bold leading-relaxed shadow-[8px_8px_0px_0px_#000] md:text-xl">
-            React + Tailwind + GSAP 기반으로 만든 교육용 페이지입니다. 스크롤하며 모델 구조를 학습할 수 있도록
-            각 챕터를 풀스크린 카드처럼 구성했습니다.
-          </p>
-
-          <div className="hero-sticker mt-8 flex flex-wrap gap-4">
-            <a
-              href="#lesson-1"
-              className="neo-btn bg-neo-accent px-8 py-4 text-sm font-black uppercase tracking-[0.14em]"
-            >
-              Start Class
-            </a>
-            <a
-              href="#lesson-3"
-              className="neo-btn bg-neo-secondary px-8 py-4 text-sm font-black uppercase tracking-[0.14em]"
-            >
-              Jump To Embedding
-            </a>
-          </div>
-        </div>
-      </header>
+      <HeroSection />
 
       <main>
-        {lessonSections.map((section, index) => {
-          if (index === 1) {
-            return (
-              <section
-                id={section.id}
-                key={section.id}
-                className={`snap-section edu-panel chapter-two-section relative flex min-h-screen items-center border-b-8 border-black ${section.bgClass}`}
-              >
-                <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-50" />
-                <div aria-hidden="true" className="absolute inset-0 texture-noise opacity-20" />
-                <ChapterTwoJamoCloud reducedMotion={reducedMotion} isMobile={isMobile} />
+        <ChapterOneSection
+          section={chapterOneSection}
+          takeawayNumber={1}
+          dataCloud={<ChapterOneDataCloud names={CHAPTER_ONE_NAMES} reducedMotion={reducedMotion} isMobile={isMobile} />}
+        />
 
-                <div className="relative z-10 mx-auto w-full max-w-7xl px-6 py-16 md:px-12">
-                  <article className="reveal max-w-6xl">
-                    <p className="inline-block -rotate-2 border-4 border-black bg-white px-4 py-2 text-sm font-black tracking-[0.22em]">
-                      {section.label}
-                    </p>
+        <ChapterTwoSection
+          section={chapterTwoSection}
+          jamoCloud={<ChapterTwoJamoCloud reducedMotion={reducedMotion} isMobile={isMobile} />}
+        >
+          {tokenizerStatus === 'loading' ? (
+            <div className="token-state-card reveal">
+              <p className="text-sm font-black uppercase tracking-[0.2em]">TOKEN MAP</p>
+              <p className="mt-3 text-lg font-bold">토큰 맵을 불러오는 중...</p>
+            </div>
+          ) : null}
 
-                    <h2 className="mt-5 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-tight sm:text-5xl md:text-6xl">
-                      <span className="inline-block rotate-1 border-4 border-black bg-neo-accent px-4 py-2">
-                        {section.title}
-                      </span>
-                    </h2>
+          {tokenizerStatus === 'error' ? (
+            <div className="token-state-card reveal">
+              <p className="text-sm font-black uppercase tracking-[0.2em]">TOKEN MAP</p>
+              <p className="mt-3 text-lg font-bold">{tokenizerError || '토큰 맵 로드 실패'}</p>
+            </div>
+          ) : null}
 
-                    <p className="mt-8 max-w-[100%] border-4 border-black bg-white p-6 text-lg font-bold leading-relaxed shadow-[8px_8px_0px_0px_#000]">
-                      {section.description}
-                    </p>
-                  </article>
+          {tokenizerStatus === 'ready' && chapterTwoTokenizer ? (
+            <ChapterTwoTokenizationDemo
+              tokenizer={chapterTwoTokenizer}
+              reducedMotion={reducedMotion}
+              isMobile={isMobile}
+            />
+          ) : null}
+        </ChapterTwoSection>
 
-                  {tokenizerStatus === 'loading' ? (
-                    <div className="token-state-card reveal">
-                      <p className="text-sm font-black uppercase tracking-[0.2em]">TOKEN MAP</p>
-                      <p className="mt-3 text-lg font-bold">토큰 맵을 불러오는 중...</p>
-                    </div>
-                  ) : null}
+        <ChapterThreeSection section={chapterThreeSection}>
+          {embeddingStatus === 'loading' ? (
+            <div className="token-state-card reveal">
+              <p className="text-sm font-black uppercase tracking-[0.2em]">EMBEDDING SNAPSHOT</p>
+              <p className="mt-3 text-lg font-bold">임베딩 스냅샷을 불러오는 중...</p>
+            </div>
+          ) : null}
 
-                  {tokenizerStatus === 'error' ? (
-                    <div className="token-state-card reveal">
-                      <p className="text-sm font-black uppercase tracking-[0.2em]">TOKEN MAP</p>
-                      <p className="mt-3 text-lg font-bold">{tokenizerError || '토큰 맵 로드 실패'}</p>
-                    </div>
-                  ) : null}
+          {embeddingStatus === 'error' ? (
+            <div className="token-state-card reveal">
+              <p className="text-sm font-black uppercase tracking-[0.2em]">EMBEDDING SNAPSHOT</p>
+              <p className="mt-3 text-lg font-bold">{embeddingError || '임베딩 스냅샷 로드 실패'}</p>
+            </div>
+          ) : null}
 
-                  {tokenizerStatus === 'ready' && chapterTwoTokenizer ? (
-                    <ChapterTwoTokenizationDemo
-                      tokenizer={chapterTwoTokenizer}
-                      reducedMotion={reducedMotion}
-                      isMobile={isMobile}
-                    />
-                  ) : null}
-                </div>
-              </section>
-            )
-          }
-
-          if (index === 2) {
-            return (
-              <section
-                id={section.id}
-                key={section.id}
-                className={`snap-section edu-panel chapter-three-section relative flex min-h-screen items-center border-b-8 border-black ${section.bgClass}`}
-              >
-                <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-45" />
-                <div aria-hidden="true" className="absolute inset-0 texture-noise opacity-15" />
-
-                <div className="relative z-10 mx-auto w-full max-w-7xl px-6 py-8 md:px-12 md:py-10">
-                  <article className="reveal max-w-6xl">
-                    <p className="inline-block -rotate-2 border-4 border-black bg-neo-secondary px-4 py-2 text-sm font-black tracking-[0.22em]">
-                      {section.label}
-                    </p>
-
-                    <h2 className="mt-4 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-tight sm:text-5xl md:text-6xl">
-                      <span className="inline-block rotate-1 border-4 border-black bg-neo-accent px-4 py-2">
-                        {section.title}
-                      </span>
-                    </h2>
-
-                    <p className="mt-5 max-w-[100%] border-4 border-black bg-white p-4 text-base font-bold leading-relaxed shadow-[6px_6px_0px_0px_#000]">
-                      {section.description}
-                    </p>
-                  </article>
-
-                  {embeddingStatus === 'loading' ? (
-                    <div className="token-state-card reveal">
-                      <p className="text-sm font-black uppercase tracking-[0.2em]">EMBEDDING SNAPSHOT</p>
-                      <p className="mt-3 text-lg font-bold">임베딩 스냅샷을 불러오는 중...</p>
-                    </div>
-                  ) : null}
-
-                  {embeddingStatus === 'error' ? (
-                    <div className="token-state-card reveal">
-                      <p className="text-sm font-black uppercase tracking-[0.2em]">EMBEDDING SNAPSHOT</p>
-                      <p className="mt-3 text-lg font-bold">{embeddingError || '임베딩 스냅샷 로드 실패'}</p>
-                    </div>
-                  ) : null}
-
-                  {embeddingStatus === 'ready' && embeddingSnapshot ? (
-                    <ChapterThreeEmbeddingDemo
-                      snapshot={embeddingSnapshot}
-                      reducedMotion={reducedMotion}
-                      isMobile={isMobile}
-                    />
-                  ) : null}
-                </div>
-              </section>
-            )
-          }
-
-          return (
-            <section
-              id={section.id}
-              key={section.id}
-              className={`snap-section edu-panel relative flex min-h-screen items-center border-b-8 border-black ${section.bgClass} ${index === 0 ? 'chapter-one-section' : ''}`}
-            >
-              <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-50" />
-              <div aria-hidden="true" className="absolute inset-0 texture-noise opacity-20" />
-              {index === 0 ? (
-                <ChapterOneDataCloud names={CHAPTER_ONE_NAMES} reducedMotion={reducedMotion} isMobile={isMobile} />
-              ) : null}
-
-              <div className="relative z-10 mx-auto grid w-full max-w-7xl gap-10 px-6 py-16 md:grid-cols-[1.05fr_0.95fr] md:px-12">
-                <article className="reveal">
-                  <p className="inline-block -rotate-2 border-4 border-black bg-white px-4 py-2 text-sm font-black tracking-[0.22em]">
-                    {section.label}
-                  </p>
-
-                  <h2 className="mt-5 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-tight sm:text-5xl md:text-6xl">
-                    <span className="inline-block rotate-1 border-4 border-black bg-neo-accent px-4 py-2">
-                      {section.title}
-                    </span>
-                  </h2>
-
-                  <p className="mt-8 max-w-2xl border-4 border-black bg-white p-6 text-lg font-bold leading-relaxed shadow-[8px_8px_0px_0px_#000]">
-                    {section.description}
-                  </p>
-                </article>
-
-                <aside className="reveal self-center">
-                  <div className="neo-card rotate-1 bg-white p-6">
-                    <p className="border-b-4 border-black pb-3 text-xs font-black uppercase tracking-[0.22em]">핵심 포인트</p>
-                    <ul className="mt-4 space-y-3">
-                      {section.points.map((point) => (
-                        <li key={point} className="border-4 border-black bg-neo-cream px-4 py-3 text-base font-bold">
-                          {point}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="-mt-6 ml-auto max-w-sm -rotate-2 border-4 border-black bg-black p-5 text-white shadow-[8px_8px_0px_0px_#000]">
-                    <p className="text-xs font-black uppercase tracking-[0.2em]">Takeaway {index + 1}</p>
-                    <p className="mt-2 text-lg font-bold leading-snug">{section.takeaway}</p>
-                  </div>
-                </aside>
-              </div>
-            </section>
-          )
-        })}
+          {embeddingStatus === 'ready' && embeddingSnapshot ? (
+            <ChapterThreeEmbeddingDemo
+              snapshot={embeddingSnapshot}
+              reducedMotion={reducedMotion}
+              isMobile={isMobile}
+            />
+          ) : null}
+        </ChapterThreeSection>
       </main>
 
-      <footer className="snap-section flex min-h-screen items-center border-t-8 border-black bg-black px-6 py-10 text-white md:px-12">
-        <div className="mx-auto flex w-full max-w-7xl flex-col items-start justify-between gap-5 md:flex-row md:items-center">
-          <p className="border-4 border-white bg-black px-4 py-3 text-sm font-black uppercase tracking-[0.18em]">
-            NEXT: API 연결 후 인터랙티브 퀴즈 섹션 추가
-          </p>
-          <a
-            href="#"
-            className="neo-btn border-white bg-neo-secondary px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-black"
-          >
-            Build Next Module
-          </a>
-        </div>
-      </footer>
+      <FooterSection />
     </div>
   )
 }
