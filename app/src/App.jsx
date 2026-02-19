@@ -1364,6 +1364,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const [revealedWeights, setRevealedWeights] = useState([])
   const [revealedContribCells, setRevealedContribCells] = useState([])
   const [revealedOutputDims, setRevealedOutputDims] = useState([])
+  const [displayedWeights, setDisplayedWeights] = useState([])
   const [displayedOutput, setDisplayedOutput] = useState([])
   const flowLayerRef = useRef(null)
   const xVectorRef = useRef(null)
@@ -1504,6 +1505,33 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     }
   })
 
+  const partialWeightRows = (() => {
+    const rowCount = keyRows.length
+    if (rowCount === 0 || headDim <= 0) {
+      return []
+    }
+
+    const partialLogits = Array.from({ length: rowCount }, () => Array.from({ length: headDim }, () => 0))
+    keyRows.forEach((row, rowIndex) => {
+      let runningDot = 0
+      for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+        runningDot += Number(queryHeadVector[dimIndex] ?? 0) * Number(row.vector[dimIndex] ?? 0)
+        partialLogits[rowIndex][dimIndex] = runningDot / Math.sqrt(headDim)
+      }
+    })
+
+    const partialWeights = Array.from({ length: rowCount }, () => Array.from({ length: headDim }, () => 0))
+    for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+      const logitsAtDim = partialLogits.map((row) => Number(row[dimIndex] ?? 0))
+      const softmaxAtDim = softmaxNumbers(logitsAtDim)
+      for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+        partialWeights[rowIndex][dimIndex] = Number(softmaxAtDim[rowIndex] ?? 0)
+      }
+    }
+
+    return partialWeights
+  })()
+
   const weightedVRows = valueRows.map((row, index) => {
     const weight = Number(weightRows[index]?.value ?? 0)
     return {
@@ -1553,6 +1581,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
     const resetRevealState = () => {
       setOutputStep(0)
+      setDisplayedWeights(Array.from({ length: weightRows.length }, () => 0))
       setDisplayedOutput(Array.from({ length: headDim }, () => 0))
       setRevealedXDims(createRevealVector(currentXRows.length))
       setRevealedQDims(createRevealVector(headDim))
@@ -1596,6 +1625,20 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
           return base
         }
         base[dimIndex] = Number(value ?? 0)
+        return base
+      })
+    }
+
+    const updateDisplayedWeightAt = (rowIndex, value) => {
+      setDisplayedWeights((prev) => {
+        const base =
+          Array.isArray(prev) && prev.length === weightRows.length
+            ? [...prev]
+            : Array.from({ length: weightRows.length }, () => 0)
+        if (rowIndex < 0 || rowIndex >= base.length) {
+          return base
+        }
+        base[rowIndex] = Number(value ?? 0)
         return base
       })
     }
@@ -1648,7 +1691,6 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
     const currentKNode = kRowRefs.current[keyRows.length - 1]
     const currentVNode = vRowRefs.current[valueRows.length - 1]
-    const currentWeightValueNode = weightValueRefs.current[currentKeyIndex]
     const flowLayerRect = flowLayer.getBoundingClientRect()
     const createdNodes = []
     const timeline = gsap.timeline({
@@ -1657,6 +1699,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       },
       onComplete: () => {
         setOutputStep(totalSteps)
+        setDisplayedWeights(weightRows.map((row) => Number(row.value ?? 0)))
         setDisplayedOutput(attentionOutput)
         setRevealedOutputDims(Array.from({ length: headDim }, () => true))
         setIsAnimating(false)
@@ -1732,6 +1775,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
     timeline.call(() => {
       setOutputStep(0)
+      setDisplayedWeights(Array.from({ length: weightRows.length }, () => 0))
       setDisplayedOutput(Array.from({ length: headDim }, () => 0))
     }, null, 0)
 
@@ -1747,9 +1791,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       }, null, startAt)
     }
 
-    const revealWeightAt = (rowIndex, startAt) => {
+    const revealWeightStepAt = (rowIndex, dimIndex, startAt) => {
       timeline.call(() => {
         revealVectorIndex(setRevealedWeights, rowIndex)
+        updateDisplayedWeightAt(
+          rowIndex,
+          partialWeightRows[rowIndex]?.[dimIndex] ?? Number(weightRows[rowIndex]?.value ?? 0),
+        )
       }, null, startAt)
     }
 
@@ -1794,30 +1842,23 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         revealVCellAt(currentKeyIndex, dimIndex, reducedStart + 0.13 + dimIndex * 0.02)
       }
 
-      const weightStageStart = reducedStart + 0.3 + currentKeyIndex * 0.04
-      for (let rowIndex = 0; rowIndex < currentKeyIndex; rowIndex += 1) {
-        const at = weightStageStart + rowIndex * 0.05
-        addClassPulse(weightRowRefs.current[rowIndex], 'attention-weight-row--active', at, 0.12)
-        addClassPulse(weightValueRefs.current[rowIndex], 'attention-weight-value--pulse', at + 0.01, 0.11)
-        revealWeightAt(rowIndex, at + 0.015)
-      }
+      const weightStageStart = reducedStart + 0.3
+      const reducedRowSpacing = 0.11
+      const reducedDimSpacing = 0.03
+      weightRows.forEach((_, rowIndex) => {
+        const rowBase = weightStageStart + rowIndex * reducedRowSpacing
+        const targetWeightNode = weightValueRefs.current[rowIndex]
+        for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+          const at = rowBase + dimIndex * reducedDimSpacing
+          addClassPulse(qCellRefs.current[dimIndex], 'attention-cell--pulse', at, 0.12)
+          addClassPulse(kCellRefs.current[rowIndex]?.[dimIndex], 'attention-cell--pulse', at + 0.01, 0.12)
+          addClassPulse(targetWeightNode, 'attention-weight-value--pulse', at + 0.015, 0.12)
+          revealWeightStepAt(rowIndex, dimIndex, at + 0.018)
+        }
+        addClassPulse(weightRowRefs.current[rowIndex], 'attention-weight-row--active', rowBase + headDim * reducedDimSpacing, 0.13)
+      })
 
-      const currentWeightStart = weightStageStart + currentKeyIndex * 0.05 + 0.03
-      for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
-        const at = currentWeightStart + dimIndex * 0.05
-        addClassPulse(qCellRefs.current[dimIndex], 'attention-cell--pulse', at, 0.12)
-        addClassPulse(kCellRefs.current[currentKeyIndex]?.[dimIndex], 'attention-cell--pulse', at + 0.01, 0.12)
-        addClassPulse(currentWeightValueNode, 'attention-weight-value--pulse', at + 0.02, 0.12)
-      }
-      addClassPulse(
-        weightRowRefs.current[currentKeyIndex],
-        'attention-weight-row--active',
-        currentWeightStart + headDim * 0.05,
-        0.14,
-      )
-      revealWeightAt(currentKeyIndex, currentWeightStart + headDim * 0.05 + 0.01)
-
-      const outputStageStart = currentWeightStart + headDim * 0.05 + 0.12
+      const outputStageStart = weightStageStart + weightRows.length * reducedRowSpacing + 0.08
       weightedVRows.forEach((_, rowIndex) => {
         const rowBase = outputStageStart + rowIndex * 0.1
         for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
@@ -1862,32 +1903,25 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       revealVCellAt(currentKeyIndex, dimIndex, stageBStart + 0.17 + dimIndex * 0.02)
     }
 
-    const stageCStart = stageBStart + 0.38 + currentKeyIndex * 0.055
-    for (let rowIndex = 0; rowIndex < currentKeyIndex; rowIndex += 1) {
-      const at = stageCStart + rowIndex * 0.055
-      addClassPulse(weightRowRefs.current[rowIndex], 'attention-weight-row--active', at, 0.13)
-      addClassPulse(weightValueRefs.current[rowIndex], 'attention-weight-value--pulse', at + 0.01, 0.1)
-      revealWeightAt(rowIndex, at + 0.015)
-    }
+    const stageCStart = stageBStart + 0.4
+    const stageCRowSpacing = 0.34
+    const stageCDimSpacing = 0.07
+    weightRows.forEach((_, rowIndex) => {
+      const rowBase = stageCStart + rowIndex * stageCRowSpacing
+      const targetWeightNode = weightValueRefs.current[rowIndex]
+      for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+        const at = rowBase + dimIndex * stageCDimSpacing
+        spawnTransfer(qCellRefs.current[dimIndex], targetWeightNode, at, 'q')
+        spawnTransfer(kCellRefs.current[rowIndex]?.[dimIndex], targetWeightNode, at + 0.02, 'k')
+        addClassPulse(qCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.005, 0.12)
+        addClassPulse(kCellRefs.current[rowIndex]?.[dimIndex], 'attention-cell--pulse', at + 0.02, 0.12)
+        addClassPulse(targetWeightNode, 'attention-weight-value--pulse', at + 0.03, 0.14)
+        revealWeightStepAt(rowIndex, dimIndex, at + 0.034)
+      }
+      addClassPulse(weightRowRefs.current[rowIndex], 'attention-weight-row--active', rowBase + headDim * stageCDimSpacing, 0.16)
+    })
 
-    const currentWeightStart = stageCStart + currentKeyIndex * 0.055 + 0.04
-    for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
-      const at = currentWeightStart + dimIndex * 0.07
-      spawnTransfer(qCellRefs.current[dimIndex], currentWeightValueNode, at, 'q')
-      spawnTransfer(kCellRefs.current[currentKeyIndex]?.[dimIndex], currentWeightValueNode, at + 0.02, 'k')
-      addClassPulse(qCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.005, 0.12)
-      addClassPulse(kCellRefs.current[currentKeyIndex]?.[dimIndex], 'attention-cell--pulse', at + 0.02, 0.12)
-      addClassPulse(currentWeightValueNode, 'attention-weight-value--pulse', at + 0.03, 0.14)
-    }
-    addClassPulse(
-      weightRowRefs.current[currentKeyIndex],
-      'attention-weight-row--active',
-      currentWeightStart + headDim * 0.07,
-      0.16,
-    )
-    revealWeightAt(currentKeyIndex, currentWeightStart + headDim * 0.07 + 0.01)
-
-    const stageDStart = currentWeightStart + headDim * 0.07 + 0.18
+    const stageDStart = stageCStart + weightRows.length * stageCRowSpacing + 0.14
     weightedVRows.forEach((_, rowIndex) => {
       const rowBase = stageDStart + rowIndex * 0.2
       for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
@@ -2206,8 +2240,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
             <div className="attention-stage-body">
               <div className="attention-weights-list">
                 {weightRows.map((row, rowIndex) => {
-                  const color = getHeatColor(row.value, 1)
-                  const useLightText = row.value >= 0.7
+                  const displayedWeight = Number(displayedWeights[rowIndex] ?? 0)
+                  const color = getHeatColor(displayedWeight, 1)
+                  const useLightText = displayedWeight >= 0.7
                   const isVisible = Boolean(revealedWeights[rowIndex])
                   return (
                     <article
@@ -2228,7 +2263,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                         }}
                         className={`attention-weight-values ${!isVisible ? 'attention-weight-value--hidden' : ''} ${valueTextClass}`.trim()}
                       >
-                        {isVisible ? row.value.toFixed(4) : ATTENTION_HIDDEN_PLACEHOLDER}
+                        {isVisible ? displayedWeight.toFixed(4) : ATTENTION_HIDDEN_PLACEHOLDER}
                       </span>
                     </article>
                   )
@@ -2258,7 +2293,11 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                     }}
                     className={`attention-row ${rowIndex < safeOutputStep ? 'attention-row--done' : ''}`}
                   >
-                    <p className={`attention-row-label ${valueTextClass}`}>{`POS ${row.position} · w ${row.weight.toFixed(3)}`}</p>
+                    <p className={`attention-row-label ${valueTextClass}`}>
+                      {`POS ${row.position} · w ${
+                        revealedWeights[rowIndex] ? Number(displayedWeights[rowIndex] ?? 0).toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER
+                      }`}
+                    </p>
                     {renderVectorCells(row.vector, `contrib-${row.position}`, {
                       cellRefFactory: (dimIndex) => (node) => {
                         if (!contribCellRefs.current[rowIndex]) {
