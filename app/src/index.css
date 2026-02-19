@@ -160,6 +160,45 @@ a {
   box-shadow: 6px 6px 0 0 #000;
 }
 
+.jamo-cloud {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.jamo-cloud-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.jamo-node {
+  position: absolute;
+  transform: translate(-50%, -50%) rotate(var(--jamo-rotate, 0deg));
+  pointer-events: none;
+  transition: transform 120ms linear;
+}
+
+.jamo-float {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: clamp(1.75rem, 3.2vw, 3.45rem);
+  line-height: 1;
+  color: #666;
+  opacity: 0.2;
+  text-shadow: none;
+  transition:
+    transform 120ms linear,
+    opacity 120ms linear;
+}
+
+.chapter-two-section:hover .jamo-float {
+  opacity: 0.2;
+  transform: translateY(-1px);
+}
+
 .token-demo-wrap {
   margin-top: 2.5rem;
   display: grid;
@@ -377,6 +416,11 @@ a {
 }
 
 @media (max-width: 767px) {
+  .jamo-float {
+    font-size: 1.6rem;
+    opacity: 0.18;
+  }
+
   .token-chip-list {
     gap: 0.5rem;
   }
