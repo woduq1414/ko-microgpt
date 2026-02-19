@@ -160,6 +160,236 @@ a {
   box-shadow: 6px 6px 0 0 #000;
 }
 
+.token-demo-wrap {
+  margin-top: 2.5rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.token-syllable-card {
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 8px 8px 0 0 #000;
+  padding: 0.5rem 1.25rem 1.25rem 1.25rem;
+}
+
+.token-name-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.token-name-pill {
+  border: 4px solid #000;
+  background: #fff;
+  font-weight: 900;
+  font-size: 1.9rem;
+  line-height: 1;
+  padding: 0.6rem 1rem;
+  box-shadow: 6px 6px 0 0 #000;
+  margin: 0;
+}
+
+.token-name-arrow {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 4px solid #000;
+  background: #ffd93d;
+  box-shadow: 4px 4px 0 0 #000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear;
+}
+
+.token-name-arrow:hover,
+.token-name-arrow:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0 0 #000;
+  outline: none;
+}
+
+.token-name-arrow:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.token-name-arrow-shape {
+  width: 0;
+  height: 0;
+  border-top: 0.42rem solid transparent;
+  border-bottom: 0.42rem solid transparent;
+}
+
+.token-name-arrow-shape-left {
+  border-right: 0.68rem solid #000;
+}
+
+.token-name-arrow-shape-right {
+  border-left: 0.68rem solid #000;
+}
+
+.token-syllable-grid {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.token-syllable-row {
+  border: 4px solid #000;
+  background: #fffdf5;
+  padding: 0.8rem;
+}
+
+.token-syllable-parts {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.token-part-badge {
+  border: 4px solid #000;
+  background: #c4b5fd;
+  font-weight: 700;
+  font-size: 0.92rem;
+  padding: 0.3rem 0.55rem;
+  line-height: 1.1;
+}
+
+.token-chip-list {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.62rem;
+}
+
+.token-chip {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 4px 4px 0 0 #000;
+  font-weight: 700;
+  padding: 0.55rem 0.62rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+}
+
+.token-chip--bos {
+  background: #ff6b6b5f;
+}
+
+.token-chip--selected {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0 0 #000;
+  background: #c4b5fd;
+}
+
+.token-chip:hover,
+.token-chip:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0 0 #000;
+  outline: none;
+}
+
+.token-chip:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.token-chip-symbol {
+  font-weight: 900;
+  font-size: 1.1rem;
+}
+
+.token-chip-meta {
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.token-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  border: 4px solid #000;
+  background: #ffd93d;
+  box-shadow: 4px 4px 0 0 #000;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  padding: 0.28rem 0.46rem;
+  white-space: nowrap;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.token-tooltip-mobile {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+.token-inspector {
+  border: 4px solid #000;
+  background: #000;
+  color: #fff;
+  box-shadow: 8px 8px 0 0 #000;
+  padding: 1.2rem;
+}
+
+.token-inspector-row {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 2px solid #fff;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.token-state-card {
+  margin-top: 2.5rem;
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 8px 8px 0 0 #000;
+  padding: 1.2rem;
+}
+
+@media (min-width: 1024px) {
+  .token-demo-wrap {
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .token-chip-list {
+    gap: 0.5rem;
+  }
+
+  .token-chip {
+    padding: 0.5rem 0.55rem;
+  }
+
+  .token-chip-symbol {
+    font-size: 1rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

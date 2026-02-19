@@ -47,6 +47,13 @@ const CHAPTER_ONE_NAMES = [
   '윤우',
 ]
 
+const CHAPTER_TWO_EXAMPLE_NAMES = ['시연', '민준', '아영', '지혜', '승민', '하율']
+const CHOSEONG_COMPAT = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+const JUNGSEONG_COMPAT = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ']
+const JONGSEONG_COMPAT = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+const HANGUL_SYLLABLE_START = 0xac00
+const HANGUL_SYLLABLE_END = 0xd7a3
+
 const LAYER_DEPTHS = [1, 1.6, 2.2]
 const ROTATION_STEPS = [-6, -3, -1, 1, 3, 6]
 const SIZE_CLASSES = ['text-base', 'text-lg', 'text-xl']
@@ -59,6 +66,82 @@ const getInitialMatch = (query) => {
 }
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+
+const formatTokenId = (value) => (typeof value === 'number' ? String(value) : 'N/A')
+
+const buildTokenizerFromRaw = (rawText) => {
+  const rawDocs = rawText
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const hangulDocs = rawDocs.filter((name) => /^[가-힣]+$/u.test(name))
+  if (!hangulDocs.length) {
+    throw new Error('No valid Hangul names found in dataset.')
+  }
+
+  const docs = hangulDocs.map((name) => name.normalize('NFD'))
+  const uchars = [...new Set(docs.join(''))].sort()
+  const stoi = Object.fromEntries(uchars.map((char, index) => [char, index]))
+
+  return {
+    stoi,
+    bos: uchars.length,
+  }
+}
+
+const decomposeKoreanNameToNfdTokens = (name) => {
+  const syllables = []
+  const tokens = []
+
+  for (const syllable of name) {
+    const code = syllable.codePointAt(0)
+    if (!code || code < HANGUL_SYLLABLE_START || code > HANGUL_SYLLABLE_END) {
+      continue
+    }
+
+    const syllableOffset = code - HANGUL_SYLLABLE_START
+    const choseongIndex = Math.floor(syllableOffset / 588)
+    const jungseongIndex = Math.floor((syllableOffset % 588) / 28)
+    const jongseongIndex = syllableOffset % 28
+
+    const initial = {
+      role: '초성',
+      syllable,
+      nfd: String.fromCharCode(0x1100 + choseongIndex),
+      display: CHOSEONG_COMPAT[choseongIndex],
+    }
+    const medial = {
+      role: '중성',
+      syllable,
+      nfd: String.fromCharCode(0x1161 + jungseongIndex),
+      display: JUNGSEONG_COMPAT[jungseongIndex],
+    }
+    const final =
+      jongseongIndex > 0
+        ? {
+            role: '종성',
+            syllable,
+            nfd: String.fromCharCode(0x11a7 + jongseongIndex),
+            display: JONGSEONG_COMPAT[jongseongIndex],
+          }
+        : null
+
+    tokens.push(initial, medial)
+    if (final) {
+      tokens.push(final)
+    }
+
+    syllables.push({
+      syllable,
+      initial,
+      medial,
+      final,
+    })
+  }
+
+  return { syllables, tokens }
+}
 
 const getCloudPosition = (index, isMobile) => {
   if (isMobile) {
@@ -194,6 +277,170 @@ function ChapterOneDataCloud({ names, reducedMotion, isMobile }) {
   )
 }
 
+function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
+  const [exampleNameIndex, setExampleNameIndex] = useState(0)
+  const [selectedTokenId, setSelectedTokenId] = useState(null)
+  const [hoveredTokenId, setHoveredTokenId] = useState(null)
+
+  const currentExampleName = CHAPTER_TWO_EXAMPLE_NAMES[exampleNameIndex]
+  const decomposition = useMemo(() => decomposeKoreanNameToNfdTokens(currentExampleName), [currentExampleName])
+
+  const tokenSequence = useMemo(() => {
+    const phonemeTokens = decomposition.tokens.map((token, index) => {
+      return {
+        id: `phoneme-${index}`,
+        display: token.display,
+        nfd: token.nfd,
+        role: token.role,
+        syllable: token.syllable,
+        tokenId: tokenizer.stoi[token.nfd],
+        isBos: false,
+      }
+    })
+
+    return [
+      {
+        id: 'bos',
+        display: '[BOS]',
+        nfd: 'BOS',
+        role: '시퀀스 시작',
+        syllable: '-',
+        tokenId: tokenizer.bos,
+        isBos: true,
+      },
+      ...phonemeTokens,
+      {
+        id: 'bos-end',
+        display: '[BOS]',
+        nfd: 'BOS',
+        role: '시퀀스 끝',
+        syllable: '-',
+        tokenId: tokenizer.bos,
+        isBos: true,
+      },
+    ]
+  }, [decomposition.tokens, tokenizer])
+
+  useLayoutEffect(() => {
+    if (reducedMotion) {
+      return undefined
+    }
+
+    const ctx = gsap.context(() => {
+      gsap.from('.token-chip', {
+        y: 0,
+        opacity: 0,
+        duration: 0.35,
+        stagger: 0.05,
+        ease: 'power2.out',
+      })
+    })
+
+    return () => ctx.revert()
+  }, [reducedMotion, tokenSequence.length, currentExampleName])
+
+  const selectedToken = tokenSequence.find((token) => token.id === selectedTokenId) ?? null
+
+  const handleTokenHoverStart = (tokenId) => setHoveredTokenId(tokenId)
+  const handleTokenHoverEnd = () => setHoveredTokenId(null)
+  const handleTokenSelect = (tokenId) => setSelectedTokenId(tokenId)
+  const moveExampleName = (direction) => {
+    setExampleNameIndex((prevIndex) => {
+      const nextIndex = (prevIndex + direction + CHAPTER_TWO_EXAMPLE_NAMES.length) % CHAPTER_TWO_EXAMPLE_NAMES.length
+      return nextIndex
+    })
+    setSelectedTokenId(null)
+    setHoveredTokenId(null)
+  }
+
+  return (
+    <div className="token-demo-wrap reveal">
+      <div className="token-syllable-card -rotate-1 py-1">
+        <p className="inline-block border-4 border-black bg-neo-secondary px-3 py-2 text-xs font-black uppercase tracking-[0.2em]">
+          EXAMPLE NAME
+        </p>
+        <div className="token-name-switcher mt-4">
+          <button
+            type="button"
+            className="token-name-arrow"
+            onClick={() => moveExampleName(-1)}
+            aria-label="이전 예시 이름 보기"
+          >
+            <span className="token-name-arrow-shape token-name-arrow-shape-left" />
+          </button>
+
+          <p className="token-name-pill">{currentExampleName}</p>
+
+          <button
+            type="button"
+            className="token-name-arrow"
+            onClick={() => moveExampleName(1)}
+            aria-label="다음 예시 이름 보기"
+          >
+            <span className="token-name-arrow-shape token-name-arrow-shape-right" />
+          </button>
+        </div>
+
+       
+        <p className="mt-5 inline-block border-4 border-black bg-neo-accent px-3 py-2 text-xs font-black uppercase tracking-[0.2em]">
+          TOKEN SEQUENCE
+        </p>
+        <div className="token-chip-list">
+          {tokenSequence.map((token) => (
+            <button
+              key={token.id}
+              type="button"
+              className={`token-chip ${token.isBos ? 'token-chip--bos' : ''} ${selectedTokenId === token.id ? 'token-chip--selected' : ''}`}
+              onMouseEnter={() => handleTokenHoverStart(token.id)}
+              onMouseLeave={handleTokenHoverEnd}
+              onFocus={() => handleTokenHoverStart(token.id)}
+              onBlur={handleTokenHoverEnd}
+              onClick={() => handleTokenSelect(token.id)}
+              aria-label={`${token.display} ${token.role} token id ${formatTokenId(token.tokenId)}`}
+            >
+              <span className="token-chip-symbol">{token.display}</span>
+              <span className="token-chip-meta">{token.role}</span>
+              {hoveredTokenId === token.id ? (
+                <span className={`token-tooltip ${isMobile ? 'token-tooltip-mobile' : ''}`}>
+                  ID {formatTokenId(token.tokenId)}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <aside className="token-inspector reveal">
+        <p className="text-xs font-black uppercase tracking-[0.2em]">현재 선택 토큰</p>
+        {selectedToken ? (
+          <>
+            <p className="mt-3 inline-block border-4 border-white bg-black px-4 py-2 text-2xl font-black">
+              {selectedToken.display}
+            </p>
+
+            <div className="token-inspector-row">
+              <span>역할</span>
+              <strong>{selectedToken.role}</strong>
+            </div>
+            <div className="token-inspector-row">
+              <span>음절</span>
+              <strong>{selectedToken.syllable}</strong>
+            </div>
+            <div className="token-inspector-row">
+              <span>Token ID</span>
+              <strong>{formatTokenId(selectedToken.tokenId)}</strong>
+            </div>
+          </>
+        ) : (
+          <p className="mt-3 border-4 border-white bg-black px-4 py-4 text-sm font-bold leading-relaxed">
+            아직 선택된 토큰이 없어요. 토큰을 클릭하면 여기에 선택 정보가 표시됩니다.
+          </p>
+        )}
+      </aside>
+    </div>
+  )
+}
+
 const lessonSections = [
   {
     id: 'lesson-1',
@@ -212,15 +459,15 @@ const lessonSections = [
   {
     id: 'lesson-2',
     label: 'CHAPTER 02',
-    title: 'ATTENTION FLOW',
+    title: 'TOKENIZATION',
     description:
-      'Each token attends to prior context with causal masking-by-construction, because keys/values grow step-by-step during generation.',
+      '모델이 이름을 만드는 방법을 배우게 하기 위해, 이름을 음운(초성·중성·종성)으로 나누고, 각 음운에 고유한 번호(토큰 ID)를 부여해 모델이 읽을 수 있는 형태로 바꿨어요. 이름의 시작과 끝에는 [BOS]라는 특수한 토큰을 추가해 어디가 시작과 끝인지 알려줘요.',
     points: [
-      'Q/K/V are projected from normalized embeddings.',
-      'Head-wise attention is scaled by sqrt(head_dim).',
-      'Outputs are merged and passed through MLP with ReLU.',
+      '좌우 화살표로 예시 이름을 바꿔가며 토큰화를 확인해요.',
+      '각 음운 토큰에는 모델이 참조하는 고유 번호(token id)가 매핑돼요.',
+      'BOS 토큰은 이름 시퀀스가 시작된다는 것을 알려주는 특수 토큰이에요.',
     ],
-    takeaway: 'A tiny transformer can still model local Korean name patterns effectively.',
+    takeaway: '이름을 음운 + 번호 시퀀스로 바꾸면, 모델이 계산 가능한 입력으로 이해할 수 있어요.',
     bgClass: 'bg-neo-muted',
   },
   {
@@ -243,6 +490,9 @@ function App() {
   const pageRef = useRef(null)
   const [reducedMotion, setReducedMotion] = useState(() => getInitialMatch('(prefers-reduced-motion: reduce)'))
   const [isMobile, setIsMobile] = useState(() => getInitialMatch('(max-width: 767px)'))
+  const [chapterTwoTokenizer, setChapterTwoTokenizer] = useState(null)
+  const [tokenizerStatus, setTokenizerStatus] = useState('loading')
+  const [tokenizerError, setTokenizerError] = useState('')
 
   useEffect(() => {
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -257,6 +507,47 @@ function App() {
     return () => {
       motionQuery.removeEventListener('change', onMotionChange)
       mobileQuery.removeEventListener('change', onMobileChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    let isActive = true
+    const controller = new AbortController()
+
+    const loadTokenizer = async () => {
+      setTokenizerStatus('loading')
+      setTokenizerError('')
+
+      try {
+        const response = await fetch('/data/ko_name.txt', { signal: controller.signal })
+        if (!response.ok) {
+          throw new Error('failed to fetch dataset')
+        }
+        const rawText = await response.text()
+        const tokenizer = buildTokenizerFromRaw(rawText)
+
+        if (!isActive) {
+          return
+        }
+
+        setChapterTwoTokenizer(tokenizer)
+        setTokenizerStatus('ready')
+      } catch (error) {
+        if (!isActive || error.name === 'AbortError') {
+          return
+        }
+
+        setChapterTwoTokenizer(null)
+        setTokenizerStatus('error')
+        setTokenizerError('토큰 맵 로드 실패')
+      }
+    }
+
+    loadTokenizer()
+
+    return () => {
+      isActive = false
+      controller.abort()
     }
   }, [])
 
@@ -465,57 +756,110 @@ function App() {
       </header>
 
       <main>
-        {lessonSections.map((section, index) => (
-          <section
-            id={section.id}
-            key={section.id}
-            className={`snap-section edu-panel relative flex min-h-screen items-center border-b-8 border-black ${section.bgClass} ${index === 0 ? 'chapter-one-section' : ''}`}
-          >
-            <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-50" />
-            <div aria-hidden="true" className="absolute inset-0 texture-noise opacity-20" />
-            {index === 0 ? (
-              <ChapterOneDataCloud names={CHAPTER_ONE_NAMES} reducedMotion={reducedMotion} isMobile={isMobile} />
-            ) : null}
+        {lessonSections.map((section, index) => {
+          if (index === 1) {
+            return (
+              <section
+                id={section.id}
+                key={section.id}
+                className={`snap-section edu-panel relative flex min-h-screen items-center border-b-8 border-black ${section.bgClass}`}
+              >
+                <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-50" />
+                <div aria-hidden="true" className="absolute inset-0 texture-noise opacity-20" />
 
-            <div className="relative z-10 mx-auto grid w-full max-w-7xl gap-10 px-6 py-16 md:grid-cols-[1.05fr_0.95fr] md:px-12">
-              <article className="reveal">
-                <p className="inline-block -rotate-2 border-4 border-black bg-white px-4 py-2 text-sm font-black tracking-[0.22em]">
-                  {section.label}
-                </p>
+                <div className="relative z-10 mx-auto w-full max-w-7xl px-6 py-16 md:px-12">
+                  <article className="reveal max-w-6xl">
+                    <p className="inline-block -rotate-2 border-4 border-black bg-white px-4 py-2 text-sm font-black tracking-[0.22em]">
+                      {section.label}
+                    </p>
 
-                <h2 className="mt-5 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-tight sm:text-5xl md:text-6xl">
-                  <span className="inline-block rotate-1 border-4 border-black bg-neo-accent px-4 py-2">
-                    {section.title}
-                  </span>
-                </h2>
+                    <h2 className="mt-5 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-tight sm:text-5xl md:text-6xl">
+                      <span className="inline-block rotate-1 border-4 border-black bg-neo-accent px-4 py-2">
+                        {section.title}
+                      </span>
+                    </h2>
 
-                <p className="mt-8 max-w-2xl border-4 border-black bg-white p-6 text-lg font-bold leading-relaxed shadow-[8px_8px_0px_0px_#000]">
-                  {section.description}
-                </p>
-              </article>
+                    <p className="mt-8 max-w-[100%] border-4 border-black bg-white p-6 text-lg font-bold leading-relaxed shadow-[8px_8px_0px_0px_#000]">
+                      {section.description}
+                    </p>
+                  </article>
 
-              <aside className="reveal self-center">
-                <div className="neo-card rotate-1 bg-white p-6">
-                  <p className="border-b-4 border-black pb-3 text-xs font-black uppercase tracking-[0.22em]">
-                    핵심 포인트
+                  {tokenizerStatus === 'loading' ? (
+                    <div className="token-state-card reveal">
+                      <p className="text-sm font-black uppercase tracking-[0.2em]">TOKEN MAP</p>
+                      <p className="mt-3 text-lg font-bold">토큰 맵을 불러오는 중...</p>
+                    </div>
+                  ) : null}
+
+                  {tokenizerStatus === 'error' ? (
+                    <div className="token-state-card reveal">
+                      <p className="text-sm font-black uppercase tracking-[0.2em]">TOKEN MAP</p>
+                      <p className="mt-3 text-lg font-bold">{tokenizerError || '토큰 맵 로드 실패'}</p>
+                    </div>
+                  ) : null}
+
+                  {tokenizerStatus === 'ready' && chapterTwoTokenizer ? (
+                    <ChapterTwoTokenizationDemo
+                      tokenizer={chapterTwoTokenizer}
+                      reducedMotion={reducedMotion}
+                      isMobile={isMobile}
+                    />
+                  ) : null}
+                </div>
+              </section>
+            )
+          }
+
+          return (
+            <section
+              id={section.id}
+              key={section.id}
+              className={`snap-section edu-panel relative flex min-h-screen items-center border-b-8 border-black ${section.bgClass} ${index === 0 ? 'chapter-one-section' : ''}`}
+            >
+              <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-50" />
+              <div aria-hidden="true" className="absolute inset-0 texture-noise opacity-20" />
+              {index === 0 ? (
+                <ChapterOneDataCloud names={CHAPTER_ONE_NAMES} reducedMotion={reducedMotion} isMobile={isMobile} />
+              ) : null}
+
+              <div className="relative z-10 mx-auto grid w-full max-w-7xl gap-10 px-6 py-16 md:grid-cols-[1.05fr_0.95fr] md:px-12">
+                <article className="reveal">
+                  <p className="inline-block -rotate-2 border-4 border-black bg-white px-4 py-2 text-sm font-black tracking-[0.22em]">
+                    {section.label}
                   </p>
-                  <ul className="mt-4 space-y-3">
-                    {section.points.map((point) => (
-                      <li key={point} className="border-4 border-black bg-neo-cream px-4 py-3 text-base font-bold">
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
 
-                <div className="-mt-6 ml-auto max-w-sm -rotate-2 border-4 border-black bg-black p-5 text-white shadow-[8px_8px_0px_0px_#000]">
-                  <p className="text-xs font-black uppercase tracking-[0.2em]">Takeaway {index + 1}</p>
-                  <p className="mt-2 text-lg font-bold leading-snug">{section.takeaway}</p>
-                </div>
-              </aside>
-            </div>
-          </section>
-        ))}
+                  <h2 className="mt-5 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-tight sm:text-5xl md:text-6xl">
+                    <span className="inline-block rotate-1 border-4 border-black bg-neo-accent px-4 py-2">
+                      {section.title}
+                    </span>
+                  </h2>
+
+                  <p className="mt-8 max-w-2xl border-4 border-black bg-white p-6 text-lg font-bold leading-relaxed shadow-[8px_8px_0px_0px_#000]">
+                    {section.description}
+                  </p>
+                </article>
+
+                <aside className="reveal self-center">
+                  <div className="neo-card rotate-1 bg-white p-6">
+                    <p className="border-b-4 border-black pb-3 text-xs font-black uppercase tracking-[0.22em]">핵심 포인트</p>
+                    <ul className="mt-4 space-y-3">
+                      {section.points.map((point) => (
+                        <li key={point} className="border-4 border-black bg-neo-cream px-4 py-3 text-base font-bold">
+                          {point}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="-mt-6 ml-auto max-w-sm -rotate-2 border-4 border-black bg-black p-5 text-white shadow-[8px_8px_0px_0px_#000]">
+                    <p className="text-xs font-black uppercase tracking-[0.2em]">Takeaway {index + 1}</p>
+                    <p className="mt-2 text-lg font-bold leading-snug">{section.takeaway}</p>
+                  </div>
+                </aside>
+              </div>
+            </section>
+          )
+        })}
       </main>
 
       <footer className="snap-section flex min-h-screen items-center border-t-8 border-black bg-black px-6 py-10 text-white md:px-12">
