@@ -1,0 +1,168 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700;900&display=block');
+@import 'tailwindcss';
+
+@theme {
+  --font-space: 'Space Grotesk', sans-serif;
+  --color-neo-cream: #fffdf5;
+  --color-neo-accent: #ff6b6b;
+  --color-neo-secondary: #ffd93d;
+  --color-neo-muted: #c4b5fd;
+}
+
+:root {
+  font-family: 'Space Grotesk', sans-serif;
+  background: #fffdf5;
+  color: #000;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+  background: #fffdf5;
+  color: #000;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.display-stroke {
+  color: transparent;
+  -webkit-text-stroke: 2px #000;
+}
+
+.neo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 4px solid #000;
+  box-shadow: 6px 6px 0 0 #000;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear;
+}
+
+.neo-btn:hover {
+  transform: translate(-1px, -1px);
+}
+
+.neo-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.neo-btn:focus-visible {
+  outline: 3px solid #000;
+  outline-offset: 3px;
+}
+
+.neo-card {
+  border: 4px solid #000;
+  box-shadow: 8px 8px 0 0 #000;
+  transition:
+    transform 200ms linear,
+    box-shadow 200ms linear;
+}
+
+.neo-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 12px 12px 0 0 #000;
+}
+
+.texture-grid {
+  background-size: 40px 40px;
+  background-image:
+    linear-gradient(to right, rgb(0 0 0 / 12%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(0 0 0 / 12%) 1px, transparent 1px);
+}
+
+.texture-halftone {
+  background-image: radial-gradient(#000 1.3px, transparent 1.3px);
+  background-size: 20px 20px;
+}
+
+.texture-noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+}
+
+.name-cloud {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.name-cloud-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.name-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  rotate: var(--node-rotate);
+  transition: rotate 100ms linear;
+  pointer-events: none;
+}
+
+.chapter-one-section:hover .name-node {
+  rotate: calc(var(--node-rotate) + 1deg);
+}
+
+.name-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 4px solid #000;
+  box-shadow: 4px 4px 0 0 #000;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 0.36rem 0.62rem;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+}
+
+.name-chip--layer1 {
+  background: #fff;
+}
+
+.name-chip--layer2 {
+  background: #ffd93d;
+}
+
+.name-chip--layer3 {
+  background: #fffdf5;
+}
+
+.chapter-one-section:hover .name-chip {
+  box-shadow: 6px 6px 0 0 #000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
