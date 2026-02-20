@@ -966,7 +966,15 @@ a {
 }
 
 .training-prob-value {
+  border: 2px solid #000;
+  background: #fff;
+  padding: 0.06rem 0.14rem;
   font-variant-numeric: tabular-nums;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear,
+    color 100ms linear;
 }
 
 .training-loss-shell {
@@ -1015,7 +1023,7 @@ a {
 .training-loss-card--pulse {
   transform: translate(-1px, -1px);
   box-shadow: 6px 6px 0 0 #000;
-  background: #c4b5fd;
+  background: #ffe77a;
 }
 
 .training-loss-pos {
@@ -1024,8 +1032,17 @@ a {
 }
 
 .training-loss-value {
+  display: inline-block;
+  border: 2px solid #000;
+  background: #fff;
+  padding: 0.06rem 0.14rem;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear,
+    color 100ms linear;
 }
 
 .training-flow-layer {

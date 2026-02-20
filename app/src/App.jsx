@@ -3767,6 +3767,16 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     return total / trainingRows.length
   }, [trainingRows])
 
+  const lossRange = useMemo(() => {
+    if (!trainingRows.length) {
+      return { min: 0, max: 0, span: 0 }
+    }
+    const values = trainingRows.map((row) => Number(row.tokenLoss ?? 0))
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    return { min, max, span: max - min }
+  }, [trainingRows])
+
   const sharedGridStyle = useMemo(() => {
     const columnCount = Math.max(1, trainingRows.length)
     const style = { '--training-col-count': String(columnCount) }
@@ -4022,9 +4032,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
                   <div className="training-prob-row-list">
                     {row.candidateRows.map((candidate) => {
                       const isTargetRow = candidate.isTarget && isTargetVisible
-                      return (
-                        <div
-                          key={`training-candidate-${row.pos}-${candidate.tokenId}`}
+                    return (
+                      <div
+                        key={`training-candidate-${row.pos}-${candidate.tokenId}`}
                           ref={(node) => {
                             if (candidate.isTarget) {
                               targetRowRefs.current[rowIndex] = node
@@ -4038,7 +4048,21 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
                           <span className={`training-prob-token ${valueTextClass}`}>
                             {isColumnVisible ? candidate.label : ATTENTION_HIDDEN_PLACEHOLDER}
                           </span>
-                          <span className={`training-prob-value ${valueTextClass}`}>
+                          <span
+                            className={`training-prob-value ${valueTextClass}`}
+                            style={
+                              isColumnVisible
+                                ? {
+                                    backgroundColor: interpolateHexColor(
+                                      EMBEDDING_POSITIVE_BASE,
+                                      EMBEDDING_POSITIVE_STRONG,
+                                      clamp(candidate.prob, 0, 1),
+                                    ),
+                                    color: candidate.prob >= 0.78 ? '#fff' : '#000',
+                                  }
+                                : undefined
+                            }
+                          >
                             {isColumnVisible ? candidate.prob.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
                           </span>
                         </div>
@@ -4056,19 +4080,37 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           <div className="training-loss-grid" style={sharedGridStyle}>
             {trainingRows.map((row, rowIndex) => {
               const isLossVisible = Boolean(revealedLossCards[rowIndex])
-              return (
-                <article
+            return (
+              <article
                   key={`training-loss-${row.pos}`}
                   ref={(node) => {
                     lossCardRefs.current[rowIndex] = node
                   }}
                   className={`training-loss-card ${isLossVisible ? '' : 'training-loss-card--hidden'}`.trim()}
+              >
+                <span className={`training-loss-pos ${valueTextClass}`}>{`POS ${row.pos}`}</span>
+                <span
+                  className={`training-loss-value ${valueTextClass}`}
+                  style={
+                    isLossVisible
+                      ? (() => {
+                          const lossRatio =
+                            lossRange.span < 1e-8 ? 0.5 : clamp((Number(row.tokenLoss ?? 0) - lossRange.min) / lossRange.span, 0, 1)
+                          return {
+                            backgroundColor: interpolateHexColor(
+                              EMBEDDING_NEGATIVE_BASE,
+                              EMBEDDING_NEGATIVE_STRONG,
+                              lossRatio,
+                            ),
+                            color: lossRatio >= 0.78 ? '#fff' : '#000',
+                          }
+                        })()
+                      : undefined
+                  }
                 >
-                  <span className={`training-loss-pos ${valueTextClass}`}>{`POS ${row.pos}`}</span>
-                  <span className={`training-loss-value ${valueTextClass}`}>
-                    {isLossVisible ? row.tokenLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
-                  </span>
-                </article>
+                  {isLossVisible ? row.tokenLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                </span>
+              </article>
               )
             })}
           </div>
