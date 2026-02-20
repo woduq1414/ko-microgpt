@@ -1670,9 +1670,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       }
     }
     const jamoInfo = getJamoInfoForChapter3(tokenChar)
+    const tokenLabel =
+      jamoInfo.role && jamoInfo.role !== '기타'
+        ? `${jamoInfo.role} ${jamoInfo.display || tokenChar}`
+        : jamoInfo.display || tokenChar
     return {
       tokenId,
-      label: jamoInfo.display || tokenChar,
+      label: tokenLabel,
       logit: Number(value ?? 0),
       prob: Number(probVector[tokenId] ?? 0),
     }
@@ -1955,6 +1959,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     const currentKNode = kRowRefs.current[keyRows.length - 1]
     const currentVNode = vRowRefs.current[valueRows.length - 1]
     const flowLayerRect = flowLayer.getBoundingClientRect()
+    const centerPointCache = new Map()
     const createdNodes = []
     const timeline = gsap.timeline({
       onStart: () => {
@@ -1991,17 +1996,25 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     }
 
     const getCenterPoint = (node) => {
+      const cached = centerPointCache.get(node)
+      if (cached) {
+        return cached
+      }
       const rect = node.getBoundingClientRect()
-      return {
+      const point = {
         x: rect.left + rect.width * 0.5 - flowLayerRect.left,
         y: rect.top + rect.height * 0.5 - flowLayerRect.top,
       }
+      centerPointCache.set(node, point)
+      return point
     }
 
-    const spawnTransfer = (fromNode, toNode, startAt, variant = 'default') => {
+    const spawnTransfer = (fromNode, toNode, startAt, variant = 'default', options = {}) => {
       if (!fromNode || !toNode) {
         return
       }
+      const safeBeamOpacity = Math.max(0.08, Math.min(1, Number(options?.beamOpacity ?? 0.9)))
+      const safeDotOpacity = Math.max(0.08, Math.min(1, Number(options?.dotOpacity ?? 1)))
       const from = getCenterPoint(fromNode)
       const to = getCenterPoint(toNode)
       const distance = Math.hypot(to.x - from.x, to.y - from.y)
@@ -2024,7 +2037,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       timeline.fromTo(
         beam,
         { opacity: 0, scaleX: 0.15 },
-        { opacity: 0.9, scaleX: 1, duration: 0.12, ease: 'power2.out' },
+        { opacity: safeBeamOpacity, scaleX: 1, duration: 0.12, ease: 'power2.out' },
         startAt,
       )
       timeline.to(beam, { opacity: 0, duration: 0.2, ease: 'power2.in' }, startAt + 0.12)
@@ -2032,7 +2045,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       timeline.fromTo(
         dot,
         { x: from.x, y: from.y, opacity: 0, scale: 0.72 },
-        { opacity: 1, duration: 0.08, ease: 'power2.out' },
+        { opacity: safeDotOpacity, duration: 0.08, ease: 'power2.out' },
         startAt,
       )
       timeline.to(
@@ -2303,23 +2316,35 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       addClassPulse(mhaInputRowRef.current, 'attention-row--active', concatStageStart + nEmbd * 0.008, 0.12)
 
       const mhaStageStart = concatStageStart + nEmbd * 0.008 + 0.05
+      const reducedLinearTargetSpacing = 0.018
+      const reducedLinearInputSpacing = 0.004
+      const reducedLinearSpan =
+        Math.max(0, nEmbd - 1) * reducedLinearTargetSpacing + Math.max(0, nEmbd - 1) * reducedLinearInputSpacing
       appendAttentionStickerTimeline({
         label: 'LINEAR',
         startAt: mhaStageStart,
-        duration: nEmbd * 0.01 + 0.12,
+        duration: reducedLinearSpan + 0.14,
         variant: 'linear',
         anchor: 'between',
         fromNode: mhaInputRowRef.current,
         toNode: mhaOutputRowRef.current,
       })
-      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-        const at = mhaStageStart + dimIndex * 0.01
-        addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.008, 0.09)
-        revealMhaOutputDimAt(dimIndex, mhaOutputVector[dimIndex] ?? 0, at + 0.01)
+      for (let targetDimIndex = 0; targetDimIndex < nEmbd; targetDimIndex += 1) {
+        const targetBase = mhaStageStart + targetDimIndex * reducedLinearTargetSpacing
+        for (let sourceDimIndex = 0; sourceDimIndex < nEmbd; sourceDimIndex += 1) {
+          const at = targetBase + sourceDimIndex * reducedLinearInputSpacing
+          addClassPulse(mhaInputCellRefs.current[sourceDimIndex], 'attention-cell--pulse', at, 0.07)
+          addClassPulse(mhaOutputCellRefs.current[targetDimIndex], 'attention-cell--active', at + 0.004, 0.08)
+        }
+        revealMhaOutputDimAt(
+          targetDimIndex,
+          mhaOutputVector[targetDimIndex] ?? 0,
+          targetBase + Math.max(0, nEmbd - 1) * reducedLinearInputSpacing + 0.01,
+        )
       }
-      addClassPulse(mhaOutputRowRef.current, 'attention-row--active', mhaStageStart + nEmbd * 0.01, 0.12)
+      addClassPulse(mhaOutputRowRef.current, 'attention-row--active', mhaStageStart + reducedLinearSpan, 0.12)
 
-      const resultStageStart = mhaStageStart + nEmbd * 0.01 + 0.05
+      const resultStageStart = mhaStageStart + reducedLinearSpan + 0.05
       appendAttentionStickerTimeline({
         label: 'RESIDUAL',
         startAt: resultStageStart,
@@ -2338,26 +2363,37 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       addClassPulse(resultRowRef.current, 'attention-row--active', resultStageStart + nEmbd * 0.011, 0.14)
 
       const mlpStageStart = resultStageStart + nEmbd * 0.011 + 0.06
+      const reducedMlpTargetSpacing = 0.018
+      const reducedMlpInputSpacing = 0.004
+      const reducedMlpSpan =
+        Math.max(0, nEmbd - 1) * reducedMlpTargetSpacing + Math.max(0, nEmbd - 1) * reducedMlpInputSpacing
       appendAttentionStickerTimeline({
         label: 'MLP',
         startAt: mlpStageStart,
-        duration: nEmbd * 0.01 + 0.12,
+        duration: reducedMlpSpan + 0.14,
         variant: 'mlp',
         anchor: 'between',
         fromNode: resultRowRef.current,
         toNode: blockOutputRowRef.current,
       })
-      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-        const at = mlpStageStart + dimIndex * 0.01
-        addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--pulse', at, 0.08)
-        addClassPulse(blockOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.008, 0.09)
-        revealBlockOutputDimAt(dimIndex, transformerBlockOutputVector[dimIndex] ?? 0, at + 0.01)
+      for (let targetDimIndex = 0; targetDimIndex < nEmbd; targetDimIndex += 1) {
+        const targetBase = mlpStageStart + targetDimIndex * reducedMlpTargetSpacing
+        for (let sourceDimIndex = 0; sourceDimIndex < nEmbd; sourceDimIndex += 1) {
+          const at = targetBase + sourceDimIndex * reducedMlpInputSpacing
+          addClassPulse(resultCellRefs.current[sourceDimIndex], 'attention-cell--pulse', at, 0.07)
+          addClassPulse(blockOutputCellRefs.current[targetDimIndex], 'attention-cell--active', at + 0.004, 0.08)
+        }
+        revealBlockOutputDimAt(
+          targetDimIndex,
+          transformerBlockOutputVector[targetDimIndex] ?? 0,
+          targetBase + Math.max(0, nEmbd - 1) * reducedMlpInputSpacing + 0.01,
+        )
       }
-      addClassPulse(blockOutputRowRef.current, 'attention-row--active', mlpStageStart + nEmbd * 0.01, 0.13)
+      addClassPulse(blockOutputRowRef.current, 'attention-row--active', mlpStageStart + reducedMlpSpan, 0.13)
 
-      const logitStageStart = mlpStageStart + nEmbd * 0.01 + 0.05
+      const logitStageStart = mlpStageStart + reducedMlpSpan + 0.05
       appendAttentionStickerTimeline({
-        label: 'LOGIT',
+        label: 'LINEAR',
         startAt: logitStageStart,
         duration: selectedTokenRows.length * 0.05 + 0.18,
         variant: 'logit',
@@ -2510,24 +2546,37 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     addClassPulse(mhaInputRowRef.current, 'attention-row--active', stageGStart + nEmbd * 0.024, 0.14)
 
     const stageG2Start = stageGStart + nEmbd * 0.024 + 0.12
+    const stageG2TargetSpacing = 0.026
+    const stageG2InputSpacing = 0.006
+    const stageG2Span = Math.max(0, nEmbd - 1) * stageG2TargetSpacing + Math.max(0, nEmbd - 1) * stageG2InputSpacing
     appendAttentionStickerTimeline({
       label: 'LINEAR',
       startAt: stageG2Start,
-      duration: nEmbd * 0.028 + 0.14,
+      duration: stageG2Span + 0.16,
       variant: 'linear',
       anchor: 'between',
       fromNode: mhaInputRowRef.current,
       toNode: mhaOutputRowRef.current,
     })
-    for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-      const at = stageG2Start + dimIndex * 0.028
-      spawnTransfer(mhaInputCellRefs.current[dimIndex], mhaOutputCellRefs.current[dimIndex], at, 'w')
-      addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
-      revealMhaOutputDimAt(dimIndex, mhaOutputVector[dimIndex] ?? 0, at + 0.064)
+    for (let targetDimIndex = 0; targetDimIndex < nEmbd; targetDimIndex += 1) {
+      const targetBase = stageG2Start + targetDimIndex * stageG2TargetSpacing
+      addClassPulse(mhaOutputCellRefs.current[targetDimIndex], 'attention-cell--active', targetBase + 0.03, 0.12)
+      for (let sourceDimIndex = 0; sourceDimIndex < nEmbd; sourceDimIndex += 1) {
+        const at = targetBase + sourceDimIndex * stageG2InputSpacing
+        spawnTransfer(mhaInputCellRefs.current[sourceDimIndex], mhaOutputCellRefs.current[targetDimIndex], at, 'w', {
+          beamOpacity: 0.28,
+          dotOpacity: 0.42,
+        })
+      }
+      revealMhaOutputDimAt(
+        targetDimIndex,
+        mhaOutputVector[targetDimIndex] ?? 0,
+        targetBase + Math.max(0, nEmbd - 1) * stageG2InputSpacing + 0.064,
+      )
     }
-    addClassPulse(mhaOutputRowRef.current, 'attention-row--active', stageG2Start + nEmbd * 0.028, 0.14)
+    addClassPulse(mhaOutputRowRef.current, 'attention-row--active', stageG2Start + stageG2Span + 0.04, 0.14)
 
-    const stageHStart = stageG2Start + nEmbd * 0.028 + 0.14
+    const stageHStart = stageG2Start + stageG2Span + 0.18
     appendAttentionStickerTimeline({
       label: 'RESIDUAL',
       startAt: stageHStart,
@@ -2546,49 +2595,70 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     addClassPulse(resultRowRef.current, 'attention-row--active', stageHStart + nEmbd * 0.03, 0.16)
 
     const stageIStart = stageHStart + nEmbd * 0.03 + 0.16
+    const stageITargetSpacing = 0.026
+    const stageIInputSpacing = 0.006
+    const stageISpan = Math.max(0, nEmbd - 1) * stageITargetSpacing + Math.max(0, nEmbd - 1) * stageIInputSpacing
     appendAttentionStickerTimeline({
       label: 'MLP',
       startAt: stageIStart,
-      duration: nEmbd * 0.028 + 0.14,
+      duration: stageISpan + 0.16,
       variant: 'mlp',
       anchor: 'between',
       fromNode: resultRowRef.current,
       toNode: blockOutputRowRef.current,
     })
-    for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-      const at = stageIStart + dimIndex * 0.028
-      spawnTransfer(resultCellRefs.current[dimIndex], blockOutputCellRefs.current[dimIndex], at, 'v')
-      addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.01, 0.11)
-      addClassPulse(blockOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
-      revealBlockOutputDimAt(dimIndex, transformerBlockOutputVector[dimIndex] ?? 0, at + 0.064)
+    for (let targetDimIndex = 0; targetDimIndex < nEmbd; targetDimIndex += 1) {
+      const targetBase = stageIStart + targetDimIndex * stageITargetSpacing
+      addClassPulse(blockOutputCellRefs.current[targetDimIndex], 'attention-cell--active', targetBase + 0.03, 0.12)
+      for (let sourceDimIndex = 0; sourceDimIndex < nEmbd; sourceDimIndex += 1) {
+        const at = targetBase + sourceDimIndex * stageIInputSpacing
+        spawnTransfer(resultCellRefs.current[sourceDimIndex], blockOutputCellRefs.current[targetDimIndex], at, 'v', {
+          beamOpacity: 0.26,
+          dotOpacity: 0.4,
+        })
+      }
+      revealBlockOutputDimAt(
+        targetDimIndex,
+        transformerBlockOutputVector[targetDimIndex] ?? 0,
+        targetBase + Math.max(0, nEmbd - 1) * stageIInputSpacing + 0.064,
+      )
     }
-    addClassPulse(blockOutputRowRef.current, 'attention-row--active', stageIStart + nEmbd * 0.028, 0.14)
+    addClassPulse(blockOutputRowRef.current, 'attention-row--active', stageIStart + stageISpan + 0.04, 0.14)
 
-    const stageJStart = stageIStart + nEmbd * 0.028 + 0.14
+    const stageJStart = stageIStart + stageISpan + 0.18
+    const stageJRowSpacing = 0.2
+    const stageJInputSpacing = 0.006
+    const stageJSpan =
+      Math.max(0, selectedTokenRows.length - 1) * stageJRowSpacing + Math.max(0, nEmbd - 1) * stageJInputSpacing
     appendAttentionStickerTimeline({
-      label: 'LOGIT',
+      label: 'LINEAR',
       startAt: stageJStart,
-      duration: selectedTokenRows.length * 0.2 + 0.2,
+      duration: stageJSpan + 0.2,
       variant: 'logit',
       anchor: 'between',
       fromNode: blockOutputStageRef.current,
       toNode: logitStageRef.current,
     })
-    const stageJRowSpacing = 0.2
-    const stageJDimSpacing = 0.022
     selectedTokenRows.forEach((_, rowIndex) => {
       const rowBase = stageJStart + rowIndex * stageJRowSpacing
+      addClassPulse(logitValueRefs.current[rowIndex], 'attention-weight-value--pulse', rowBase + 0.04, 0.12)
       for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-        const at = rowBase + dimIndex * stageJDimSpacing
-        spawnTransfer(blockOutputCellRefs.current[dimIndex], logitValueRefs.current[rowIndex], at, 'w')
-        addClassPulse(blockOutputCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.005, 0.1)
-        addClassPulse(logitValueRefs.current[rowIndex], 'attention-weight-value--pulse', at + 0.03, 0.11)
+        const at = rowBase + dimIndex * stageJInputSpacing
+        spawnTransfer(blockOutputCellRefs.current[dimIndex], logitValueRefs.current[rowIndex], at, 'w', {
+          beamOpacity: 0.24,
+          dotOpacity: 0.36,
+        })
         revealLogitStepAt(rowIndex, dimIndex, at + 0.034)
       }
-      addClassPulse(logitRowRefs.current[rowIndex], 'attention-row--active', rowBase + nEmbd * stageJDimSpacing, 0.14)
+      addClassPulse(
+        logitRowRefs.current[rowIndex],
+        'attention-row--active',
+        rowBase + Math.max(0, nEmbd - 1) * stageJInputSpacing + 0.03,
+        0.14,
+      )
     })
 
-    const stageKStart = stageJStart + selectedTokenRows.length * stageJRowSpacing + nEmbd * stageJDimSpacing + 0.14
+    const stageKStart = stageJStart + stageJSpan + 0.18
     appendAttentionStickerTimeline({
       label: 'SOFTMAX',
       startAt: stageKStart,
@@ -3230,7 +3300,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
               <section ref={blockOutputStageRef} className="attention-decoder-stage">
                 {renderStageHead({
                   key: 'stage-block-output',
-                  title: 'TRANSFORMER BLOCK OUTPUT (x)',
+                  title: 'TRANSFORMER BLOCK OUTPUT',
                   infoTitle: 'Transformer Block Output',
                   infoBody: 'Attention Block Result를 입력으로 MLP(rmsnorm→fc1→relu→fc2→residual)를 적용한 최종 블록 출력 벡터입니다.',
                 })}
@@ -3302,9 +3372,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
               <section ref={probStageRef} className="attention-decoder-stage">
                 {renderStageHead({
                   key: 'stage-prob',
-                  title: 'PROB',
+                  title: 'NEXT TOKEN PROB',
                   badge: 'SOFTMAX(LOGIT)',
-                  infoTitle: 'Probability',
+                  infoTitle: 'Next Token Probability',
                   infoBody: 'logit 전체에 softmax를 적용한 확률입니다. 여기에도 상위 10개와 하위 2개만 표시합니다.',
                 })}
                 <div className="attention-stage-body">
