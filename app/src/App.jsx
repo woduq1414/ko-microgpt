@@ -1349,6 +1349,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const attnWq = attention?.attn_wq ?? []
   const attnWk = attention?.attn_wk ?? []
   const attnWv = attention?.attn_wv ?? []
+  const attnWo = attention?.attn_wo ?? []
   const wte = snapshot?.wte ?? []
   const wpe = snapshot?.wpe ?? []
   const [exampleNameIndex, setExampleNameIndex] = useState(0)
@@ -1364,10 +1365,21 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const [revealedWeights, setRevealedWeights] = useState([])
   const [revealedContribCells, setRevealedContribCells] = useState([])
   const [revealedOutputDims, setRevealedOutputDims] = useState([])
+  const [revealedHeadOutputCells, setRevealedHeadOutputCells] = useState([])
+  const [revealedMhaInputDims, setRevealedMhaInputDims] = useState([])
+  const [revealedMhaOutputDims, setRevealedMhaOutputDims] = useState([])
+  const [revealedResultDims, setRevealedResultDims] = useState([])
   const [displayedWeights, setDisplayedWeights] = useState([])
   const [displayedOutput, setDisplayedOutput] = useState([])
+  const [displayedMhaOutput, setDisplayedMhaOutput] = useState([])
+  const [displayedResultVector, setDisplayedResultVector] = useState([])
+  const pipelineContentRef = useRef(null)
+  const bridgeLayerRef = useRef(null)
+  const bridgeTopPathRef = useRef(null)
+  const bridgeResultPathRef = useRef(null)
   const flowLayerRef = useRef(null)
   const xVectorRef = useRef(null)
+  const xValueRefs = useRef([])
   const qVectorRef = useRef(null)
   const kRowRefs = useRef([])
   const vRowRefs = useRef([])
@@ -1380,6 +1392,17 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const outputCellRefs = useRef([])
   const contribRowRefs = useRef([])
   const outputVectorRef = useRef(null)
+  const headOutputRowRefs = useRef([])
+  const headOutputCellRefs = useRef([])
+  const headSummaryQRefs = useRef([])
+  const headSummaryKRefs = useRef([])
+  const headSummaryVRefs = useRef([])
+  const mhaInputRowRef = useRef(null)
+  const mhaInputCellRefs = useRef([])
+  const mhaOutputRowRef = useRef(null)
+  const mhaOutputCellRefs = useRef([])
+  const resultRowRef = useRef(null)
+  const resultCellRefs = useRef([])
   const timelineRef = useRef(null)
   const currentExampleName = CHAPTER_FOUR_EXAMPLE_NAMES[exampleNameIndex]
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
@@ -1394,9 +1417,11 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     Array.isArray(attnWq) &&
     Array.isArray(attnWk) &&
     Array.isArray(attnWv) &&
+    Array.isArray(attnWo) &&
     Array.isArray(attnWq[0]) &&
     Array.isArray(attnWk[0]) &&
-    Array.isArray(attnWv[0])
+    Array.isArray(attnWv[0]) &&
+    Array.isArray(attnWo[0])
 
   const stoi = useMemo(() => {
     return Object.fromEntries(tokenChars.map((char, index) => [char, index]))
@@ -1459,6 +1484,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const safeQueryIndex = modelSequence.length ? clamp(queryIndex, 0, modelSequence.length - 1) : 0
   const causalSequence = hasAttentionData ? modelSequence.slice(0, safeQueryIndex + 1) : []
   const queryToken = modelSequence[safeQueryIndex] ?? null
+  const isLastQuery = modelSequence.length > 0 && safeQueryIndex === modelSequence.length - 1
 
   const xVectors = modelSequence.map((item) => {
     const tokenRow = wte[item.tokenId] ?? []
@@ -1472,18 +1498,35 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const currentXVector = xVectors[safeQueryIndex] ?? Array.from({ length: nEmbd }, () => 0)
   const currentXRows = currentXVector.map((value, dim) => ({ dim, value: Number(value ?? 0) }))
   const queryVector = currentXVector
-  const queryHeadVector = sliceHead(matVec(queryVector, attnWq), headIndex, headDim)
+  const queryFullVector = matVec(queryVector, attnWq)
+  const queryHeadVector = sliceHead(queryFullVector, headIndex, headDim)
 
-  const keyRows = causalSequence.map((item) => {
-    const keyVector = sliceHead(matVec(xVectors[item.position] ?? [], attnWk), headIndex, headDim)
+  const keyFullRows = causalSequence.map((item) => {
+    const keyVector = matVec(xVectors[item.position] ?? [], attnWk)
     return {
       ...item,
       vector: keyVector,
     }
   })
 
-  const valueRows = causalSequence.map((item) => {
-    const valueVector = sliceHead(matVec(xVectors[item.position] ?? [], attnWv), headIndex, headDim)
+  const valueFullRows = causalSequence.map((item) => {
+    const valueVector = matVec(xVectors[item.position] ?? [], attnWv)
+    return {
+      ...item,
+      vector: valueVector,
+    }
+  })
+
+  const keyRows = keyFullRows.map((item) => {
+    const keyVector = sliceHead(item.vector, headIndex, headDim)
+    return {
+      ...item,
+      vector: keyVector,
+    }
+  })
+
+  const valueRows = valueFullRows.map((item) => {
+    const valueVector = sliceHead(item.vector, headIndex, headDim)
     return {
       ...item,
       vector: valueVector,
@@ -1555,9 +1598,30 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     }, 0)
   })
 
+  const headOutputs = Array.from({ length: nHead }, (_, headIdx) => {
+    const queryHead = sliceHead(queryFullVector, headIdx, headDim)
+    const keySlices = keyFullRows.map((row) => sliceHead(row.vector, headIdx, headDim))
+    const valueSlices = valueFullRows.map((row) => sliceHead(row.vector, headIdx, headDim))
+    const logits = keySlices.map((row) => dotProduct(queryHead, row) / Math.sqrt(headDim))
+    const weights = softmaxNumbers(logits)
+    return Array.from({ length: headDim }, (_, dimIndex) => {
+      return valueSlices.reduce((accumulator, row, rowIndex) => {
+        return accumulator + Number(weights[rowIndex] ?? 0) * Number(row[dimIndex] ?? 0)
+      }, 0)
+    })
+  })
+
+  const xAttnVector = headOutputs.flat()
+  const mhaOutputVector = attnWo.length ? matVec(xAttnVector, attnWo) : Array.from({ length: nEmbd }, () => 0)
+  const attentionBlockResultVector = currentXVector.map((value, dimIndex) => {
+    return Number(value ?? 0) + Number(mhaOutputVector[dimIndex] ?? 0)
+  })
+
   const totalSteps = weightedVRows.length
   const safeOutputStep = clamp(outputStep, 0, totalSteps)
   const displayedOutputVector = displayedOutput.length === headDim ? displayedOutput : Array.from({ length: headDim }, () => 0)
+  const displayedMhaOutputVector = displayedMhaOutput.length === nEmbd ? displayedMhaOutput : Array.from({ length: nEmbd }, () => 0)
+  const displayedResult = displayedResultVector.length === nEmbd ? displayedResultVector : Array.from({ length: nEmbd }, () => 0)
 
   const maxAbs = Math.max(
     1e-8,
@@ -1568,9 +1632,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     ...weightRows.map((row) => Math.abs(row.value)),
     ...weightedVRows.flatMap((row) => row.vector.map((value) => Math.abs(value))),
     ...attentionOutput.map((value) => Math.abs(value)),
+    ...headOutputs.flatMap((row) => row.map((value) => Math.abs(value))),
+    ...xAttnVector.map((value) => Math.abs(value)),
+    ...mhaOutputVector.map((value) => Math.abs(value)),
+    ...attentionBlockResultVector.map((value) => Math.abs(value)),
   )
 
-  const animationSignature = `${currentExampleName}-${safeQueryIndex}-${totalSteps}`
+  const animationSignature = `${currentExampleName}-${safeQueryIndex}-${totalSteps}-${isLastQuery ? 'last' : 'mid'}`
 
   useLayoutEffect(() => {
     const flowLayer = flowLayerRef.current
@@ -1583,6 +1651,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       setOutputStep(0)
       setDisplayedWeights(Array.from({ length: weightRows.length }, () => 0))
       setDisplayedOutput(Array.from({ length: headDim }, () => 0))
+      setDisplayedMhaOutput(Array.from({ length: nEmbd }, () => 0))
+      setDisplayedResultVector(Array.from({ length: nEmbd }, () => 0))
       setRevealedXDims(createRevealVector(currentXRows.length))
       setRevealedQDims(createRevealVector(headDim))
       setRevealedKCells(createRevealMatrixWithVisibleRows(keyRows.length, headDim, currentKeyIndex))
@@ -1590,6 +1660,10 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       setRevealedWeights(createRevealVector(weightRows.length))
       setRevealedContribCells(createRevealMatrix(weightedVRows.length, headDim))
       setRevealedOutputDims(createRevealVector(headDim))
+      setRevealedHeadOutputCells(createRevealMatrix(nHead, headDim))
+      setRevealedMhaInputDims(createRevealVector(nEmbd))
+      setRevealedMhaOutputDims(createRevealVector(nEmbd))
+      setRevealedResultDims(createRevealVector(nEmbd))
     }
 
     const revealVectorIndex = (setter, index) => {
@@ -1621,6 +1695,28 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     const updateDisplayedOutputDim = (dimIndex, value) => {
       setDisplayedOutput((prev) => {
         const base = Array.isArray(prev) && prev.length === headDim ? [...prev] : Array.from({ length: headDim }, () => 0)
+        if (dimIndex < 0 || dimIndex >= base.length) {
+          return base
+        }
+        base[dimIndex] = Number(value ?? 0)
+        return base
+      })
+    }
+
+    const updateDisplayedMhaOutputDim = (dimIndex, value) => {
+      setDisplayedMhaOutput((prev) => {
+        const base = Array.isArray(prev) && prev.length === nEmbd ? [...prev] : Array.from({ length: nEmbd }, () => 0)
+        if (dimIndex < 0 || dimIndex >= base.length) {
+          return base
+        }
+        base[dimIndex] = Number(value ?? 0)
+        return base
+      })
+    }
+
+    const updateDisplayedResultDim = (dimIndex, value) => {
+      setDisplayedResultVector((prev) => {
+        const base = Array.isArray(prev) && prev.length === nEmbd ? [...prev] : Array.from({ length: nEmbd }, () => 0)
         if (dimIndex < 0 || dimIndex >= base.length) {
           return base
         }
@@ -1661,14 +1757,26 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         ...vRowRefs.current,
         ...weightRowRefs.current,
         ...contribRowRefs.current,
+        ...headOutputRowRefs.current,
         qVectorRef.current,
         outputVectorRef.current,
+        mhaInputRowRef.current,
+        mhaOutputRowRef.current,
+        resultRowRef.current,
+        ...xValueRefs.current,
         ...qCellRefs.current,
         ...cellGridNodes(kCellRefs.current),
         ...cellGridNodes(vCellRefs.current),
         ...weightValueRefs.current,
         ...cellGridNodes(contribCellRefs.current),
         ...outputCellRefs.current,
+        ...cellGridNodes(headOutputCellRefs.current),
+        ...headSummaryQRefs.current,
+        ...headSummaryKRefs.current,
+        ...headSummaryVRefs.current,
+        ...mhaInputCellRefs.current,
+        ...mhaOutputCellRefs.current,
+        ...resultCellRefs.current,
       ]
         .filter(Boolean)
         .forEach((node) => {
@@ -1702,6 +1810,14 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         setDisplayedWeights(weightRows.map((row) => Number(row.value ?? 0)))
         setDisplayedOutput(attentionOutput)
         setRevealedOutputDims(Array.from({ length: headDim }, () => true))
+        if (isLastQuery) {
+          setDisplayedMhaOutput(mhaOutputVector)
+          setDisplayedResultVector(attentionBlockResultVector)
+          setRevealedHeadOutputCells(Array.from({ length: nHead }, () => Array.from({ length: headDim }, () => true)))
+          setRevealedMhaInputDims(Array.from({ length: nEmbd }, () => true))
+          setRevealedMhaOutputDims(Array.from({ length: nEmbd }, () => true))
+          setRevealedResultDims(Array.from({ length: nEmbd }, () => true))
+        }
         setIsAnimating(false)
       },
     })
@@ -1777,6 +1893,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       setOutputStep(0)
       setDisplayedWeights(Array.from({ length: weightRows.length }, () => 0))
       setDisplayedOutput(Array.from({ length: headDim }, () => 0))
+      setDisplayedMhaOutput(Array.from({ length: nEmbd }, () => 0))
+      setDisplayedResultVector(Array.from({ length: nEmbd }, () => 0))
     }, null, 0)
 
     const revealXDimAt = (dimIndex, startAt) => {
@@ -1823,6 +1941,32 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       timeline.call(() => {
         revealVectorIndex(setRevealedOutputDims, dimIndex)
         updateDisplayedOutputDim(dimIndex, value)
+      }, null, startAt)
+    }
+
+    const revealHeadOutputCellAt = (headIdx, dimIndex, startAt) => {
+      timeline.call(() => {
+        revealMatrixIndex(setRevealedHeadOutputCells, headIdx, dimIndex)
+      }, null, startAt)
+    }
+
+    const revealMhaInputDimAt = (dimIndex, startAt) => {
+      timeline.call(() => {
+        revealVectorIndex(setRevealedMhaInputDims, dimIndex)
+      }, null, startAt)
+    }
+
+    const revealMhaOutputDimAt = (dimIndex, value, startAt) => {
+      timeline.call(() => {
+        revealVectorIndex(setRevealedMhaOutputDims, dimIndex)
+        updateDisplayedMhaOutputDim(dimIndex, value)
+      }, null, startAt)
+    }
+
+    const revealResultDimAt = (dimIndex, value, startAt) => {
+      timeline.call(() => {
+        revealVectorIndex(setRevealedResultDims, dimIndex)
+        updateDisplayedResultDim(dimIndex, value)
       }, null, startAt)
     }
 
@@ -1875,6 +2019,58 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         }, null, rowBase + headDim * 0.02 + 0.03)
       })
       addClassPulse(outputVectorRef.current, 'attention-row--active', outputStageStart + weightedVRows.length * 0.1, 0.16)
+
+      if (isLastQuery) {
+        const headStageStart = outputStageStart + weightedVRows.length * 0.1 + 0.08
+        for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+          const at = headStageStart + dimIndex * 0.03
+          addClassPulse(outputCellRefs.current[dimIndex], 'attention-cell--pulse', at, 0.12)
+          addClassPulse(headOutputCellRefs.current[0]?.[dimIndex], 'attention-cell--active', at + 0.01, 0.12)
+          revealHeadOutputCellAt(0, dimIndex, at + 0.013)
+        }
+        addClassPulse(headOutputRowRefs.current[0], 'attention-row--active', headStageStart + headDim * 0.03, 0.13)
+
+        const summaryStageStart = headStageStart + headDim * 0.03 + 0.06
+        for (let headIdx = 1; headIdx < nHead; headIdx += 1) {
+          const rowBase = summaryStageStart + (headIdx - 1) * 0.09
+          for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+            const at = rowBase + dimIndex * 0.02
+            addClassPulse(headSummaryQRefs.current[headIdx], 'attention-cell--pulse', at, 0.1)
+            addClassPulse(headSummaryKRefs.current[headIdx], 'attention-cell--pulse', at + 0.006, 0.1)
+            addClassPulse(headSummaryVRefs.current[headIdx], 'attention-cell--pulse', at + 0.012, 0.1)
+            addClassPulse(headOutputCellRefs.current[headIdx]?.[dimIndex], 'attention-cell--active', at + 0.018, 0.1)
+            revealHeadOutputCellAt(headIdx, dimIndex, at + 0.02)
+          }
+          addClassPulse(headOutputRowRefs.current[headIdx], 'attention-row--active', rowBase + headDim * 0.02, 0.11)
+        }
+
+        const concatStageStart = summaryStageStart + Math.max(0, nHead - 1) * 0.09 + 0.04
+        for (let flatIndex = 0; flatIndex < nEmbd; flatIndex += 1) {
+          const at = concatStageStart + flatIndex * 0.008
+          addClassPulse(mhaInputCellRefs.current[flatIndex], 'attention-cell--active', at + 0.01, 0.08)
+          revealMhaInputDimAt(flatIndex, at + 0.012)
+        }
+        addClassPulse(mhaInputRowRef.current, 'attention-row--active', concatStageStart + nEmbd * 0.008, 0.12)
+
+        const mhaStageStart = concatStageStart + nEmbd * 0.008 + 0.05
+        for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+          const at = mhaStageStart + dimIndex * 0.01
+          addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.008, 0.09)
+          revealMhaOutputDimAt(dimIndex, mhaOutputVector[dimIndex] ?? 0, at + 0.01)
+        }
+        addClassPulse(mhaOutputRowRef.current, 'attention-row--active', mhaStageStart + nEmbd * 0.01, 0.12)
+
+        const resultStageStart = mhaStageStart + nEmbd * 0.01 + 0.05
+        for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+          const at = resultStageStart + dimIndex * 0.011
+          addClassPulse(xValueRefs.current[dimIndex], 'attention-cell--pulse', at, 0.08)
+          addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.004, 0.08)
+          addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--active', at + 0.012, 0.1)
+          revealResultDimAt(dimIndex, attentionBlockResultVector[dimIndex] ?? 0, at + 0.014)
+        }
+        addClassPulse(resultRowRef.current, 'attention-row--active', resultStageStart + nEmbd * 0.011, 0.14)
+      }
+
       return () => {
         timeline.kill()
         timelineRef.current = null
@@ -1942,6 +2138,63 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     })
     addClassPulse(outputVectorRef.current, 'attention-row--active', stageDStart + weightedVRows.length * 0.2, 0.16)
 
+    if (isLastQuery) {
+      const stageEStart = stageDStart + weightedVRows.length * 0.2 + 0.16
+      for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+        const at = stageEStart + dimIndex * 0.05
+        spawnTransfer(outputCellRefs.current[dimIndex], headOutputCellRefs.current[0]?.[dimIndex], at, 'o')
+        addClassPulse(outputCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.01, 0.12)
+        addClassPulse(headOutputCellRefs.current[0]?.[dimIndex], 'attention-cell--active', at + 0.06, 0.14)
+        revealHeadOutputCellAt(0, dimIndex, at + 0.064)
+      }
+      addClassPulse(headOutputRowRefs.current[0], 'attention-row--active', stageEStart + headDim * 0.05, 0.16)
+
+      const stageFStart = stageEStart + headDim * 0.05 + 0.16
+      for (let headIdx = 1; headIdx < nHead; headIdx += 1) {
+        const rowBase = stageFStart + (headIdx - 1) * 0.23
+        for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+          const at = rowBase + dimIndex * 0.04
+          spawnTransfer(headSummaryQRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at, 'q')
+          spawnTransfer(headSummaryKRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at + 0.01, 'k')
+          spawnTransfer(headSummaryVRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at + 0.02, 'v')
+          addClassPulse(headOutputCellRefs.current[headIdx]?.[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
+          revealHeadOutputCellAt(headIdx, dimIndex, at + 0.064)
+        }
+        addClassPulse(headOutputRowRefs.current[headIdx], 'attention-row--active', rowBase + headDim * 0.04, 0.14)
+      }
+
+      const stageGStart = stageFStart + Math.max(0, nHead - 1) * 0.23 + 0.16
+      for (let headIdx = 0; headIdx < nHead; headIdx += 1) {
+        for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+          const flatIndex = headIdx * headDim + dimIndex
+          const at = stageGStart + flatIndex * 0.024
+          spawnTransfer(headOutputCellRefs.current[headIdx]?.[dimIndex], mhaInputCellRefs.current[flatIndex], at, 'o')
+          addClassPulse(mhaInputCellRefs.current[flatIndex], 'attention-cell--active', at + 0.06, 0.12)
+          revealMhaInputDimAt(flatIndex, at + 0.064)
+        }
+      }
+      addClassPulse(mhaInputRowRef.current, 'attention-row--active', stageGStart + nEmbd * 0.024, 0.14)
+
+      const stageG2Start = stageGStart + nEmbd * 0.024 + 0.12
+      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+        const at = stageG2Start + dimIndex * 0.028
+        spawnTransfer(mhaInputCellRefs.current[dimIndex], mhaOutputCellRefs.current[dimIndex], at, 'w')
+        addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
+        revealMhaOutputDimAt(dimIndex, mhaOutputVector[dimIndex] ?? 0, at + 0.064)
+      }
+      addClassPulse(mhaOutputRowRef.current, 'attention-row--active', stageG2Start + nEmbd * 0.028, 0.14)
+
+      const stageHStart = stageG2Start + nEmbd * 0.028 + 0.14
+      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+        const at = stageHStart + dimIndex * 0.03
+        spawnTransfer(xValueRefs.current[dimIndex], resultCellRefs.current[dimIndex], at, 'q')
+        spawnTransfer(mhaOutputCellRefs.current[dimIndex], resultCellRefs.current[dimIndex], at + 0.015, 'v')
+        addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--active', at + 0.07, 0.13)
+        revealResultDimAt(dimIndex, attentionBlockResultVector[dimIndex] ?? 0, at + 0.075)
+      }
+      addClassPulse(resultRowRef.current, 'attention-row--active', stageHStart + nEmbd * 0.03, 0.16)
+    }
+
     return () => {
       timeline.kill()
       timelineRef.current = null
@@ -1949,7 +2202,77 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       flowLayer.innerHTML = ''
       clearTempClasses()
     }
-  }, [animationTick, animationSignature, currentXRows.length, hasAttentionData, headDim, reducedMotion]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animationTick, animationSignature, currentXRows.length, hasAttentionData, headDim, nEmbd, nHead, reducedMotion]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useLayoutEffect(() => {
+    const containerNode = pipelineContentRef.current
+    const bridgeLayerNode = bridgeLayerRef.current
+    const topPathNode = bridgeTopPathRef.current
+    const resultPathNode = bridgeResultPathRef.current
+    const resetPaths = () => {
+      topPathNode?.setAttribute('d', '')
+      resultPathNode?.setAttribute('d', '')
+    }
+    if (!containerNode || !isLastQuery) {
+      resetPaths()
+      return undefined
+    }
+
+    const updatePaths = () => {
+      const rootRect = containerNode.getBoundingClientRect()
+      const topOutputNode = outputVectorRef.current
+      const topXNode = xVectorRef.current
+      const head0Node = headOutputRowRefs.current[0]
+      const resultNode = resultRowRef.current
+      if (!topOutputNode || !topXNode || !head0Node || !resultNode || !bridgeLayerNode) {
+        resetPaths()
+        return
+      }
+
+      const getPoint = (node, xAnchor, yAnchor) => {
+        const rect = node.getBoundingClientRect()
+        const x =
+          xAnchor === 'left'
+            ? rect.left
+            : xAnchor === 'right'
+              ? rect.right
+              : rect.left + rect.width * 0.5
+        const y =
+          yAnchor === 'top'
+            ? rect.top
+            : yAnchor === 'bottom'
+              ? rect.bottom
+              : rect.top + rect.height * 0.5
+        return {
+          x: x - rootRect.left,
+          y: y - rootRect.top,
+        }
+      }
+
+      const topOutPoint = getPoint(topOutputNode, 'center', 'bottom')
+      const headPoint = getPoint(head0Node, 'center', 'top')
+      const xPoint = getPoint(topXNode, 'center', 'bottom')
+      const resultPoint = getPoint(resultNode, 'center', 'top')
+
+      const topToHead = `M ${topOutPoint.x} ${topOutPoint.y} C ${topOutPoint.x} ${topOutPoint.y + 42}, ${headPoint.x} ${
+        headPoint.y - 42
+      }, ${headPoint.x} ${headPoint.y}`
+      const xToResult = `M ${xPoint.x} ${xPoint.y} C ${xPoint.x - 110} ${xPoint.y + 92}, ${resultPoint.x - 40} ${
+        resultPoint.y - 92
+      }, ${resultPoint.x} ${resultPoint.y}`
+
+      bridgeLayerNode.setAttribute('viewBox', `0 0 ${Math.max(1, rootRect.width)} ${Math.max(1, rootRect.height)}`)
+      topPathNode?.setAttribute('d', topToHead)
+      resultPathNode?.setAttribute('d', xToResult)
+    }
+
+    updatePaths()
+    window.addEventListener('resize', updatePaths)
+    return () => {
+      window.removeEventListener('resize', updatePaths)
+      resetPaths()
+    }
+  }, [animationTick, isLastQuery, safeQueryIndex])
 
   const moveExampleName = (direction) => {
     setExampleNameIndex((prevIndex) => {
@@ -2043,6 +2366,11 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     )
   }
 
+  const headOutputRows = headOutputs.map((vector, headIdx) => ({
+    head: headIdx,
+    vector,
+  }))
+
   if (!hasAttentionData) {
     return null
   }
@@ -2113,213 +2441,353 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       </div>
 
       <div className="attention-pipeline-shell">
-        <div className="attention-pipeline-track">
-          <section className="attention-stage attention-stage--x reveal">
-            {renderStageHead({
-              key: 'stage-x',
-              title: 'FINAL EMBEDDING (x)',
-              badge: `POS ${safeQueryIndex}`,
-              infoTitle: 'Final Embedding (x)',
-              infoBody: '현재 Query 위치의 Final Embedding 벡터입니다. 여기서 Q를 만들고, 현재 위치의 K/V 생성 애니메이션도 이 x를 기준으로 보여줍니다.',
-            })}
+        <div ref={pipelineContentRef} className="attention-pipeline-content">
+          <div className="attention-pipeline-track">
+            <section className="attention-stage attention-stage--x reveal">
+              {renderStageHead({
+                key: 'stage-x',
+                title: 'FINAL EMBEDDING (x)',
+                badge: `POS ${safeQueryIndex}`,
+                infoTitle: 'Final Embedding (x)',
+                infoBody: '현재 Query 위치의 Final Embedding 벡터입니다. 여기서 Q를 만들고, 현재 위치의 K/V 생성 애니메이션도 이 x를 기준으로 보여줍니다.',
+              })}
 
-            <div className="attention-stage-body">
-              <article ref={xVectorRef} className="attention-row attention-row--query">
-                <p className={`attention-row-label ${valueTextClass}`}>{`POS ${safeQueryIndex} · ${queryToken?.label ?? ''}`}</p>
-                <div className="attention-vector-column">
-                  {currentXRows.map((row) => {
-                    const ratio = clamp(Math.abs(row.value) / maxAbs, 0, 1)
-                    const isVisible = Boolean(revealedXDims[row.dim])
-                    return (
-                      <div key={`x-line-${row.dim}`} className="attention-vector-line">
-                        <span className={`attention-vector-line-dim ${valueTextClass}`}>{row.dim}</span>
-                        <span
-                          className={`attention-vector-line-value ${!isVisible ? 'attention-value--hidden' : ''} ${valueTextClass}`.trim()}
-                          style={{
-                            backgroundColor: getHeatColor(row.value, maxAbs),
-                            color: ratio > 0.8 ? '#fff' : '#000',
+              <div className="attention-stage-body">
+                <article ref={xVectorRef} className="attention-row attention-row--query">
+                  <p className={`attention-row-label ${valueTextClass}`}>{`POS ${safeQueryIndex} · ${queryToken?.label ?? ''}`}</p>
+                  <div className="attention-vector-column">
+                    {currentXRows.map((row) => {
+                      const ratio = clamp(Math.abs(row.value) / maxAbs, 0, 1)
+                      const isVisible = Boolean(revealedXDims[row.dim])
+                      return (
+                        <div key={`x-line-${row.dim}`} className="attention-vector-line">
+                          <span className={`attention-vector-line-dim ${valueTextClass}`}>{row.dim}</span>
+                          <span
+                            ref={(node) => {
+                              xValueRefs.current[row.dim] = node
+                            }}
+                            className={`attention-vector-line-value ${!isVisible ? 'attention-value--hidden' : ''} ${valueTextClass}`.trim()}
+                            style={{
+                              backgroundColor: getHeatColor(row.value, maxAbs),
+                              color: ratio > 0.8 ? '#fff' : '#000',
+                            }}
+                          >
+                            {isVisible ? row.value.toFixed(2) : ATTENTION_HIDDEN_PLACEHOLDER}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section className="attention-stage attention-stage--qkv reveal">
+              {renderStageHead({
+                key: 'stage-qkv',
+                title: 'Q / K / V',
+                badge: 'HEAD 0',
+                infoTitle: 'Q / K / V',
+                infoBody: 'Q는 현재 위치 x에서 생성합니다. K/V는 causal 범위(0..query)의 값을 표시하며, 이전 위치는 cache 결과를 사용합니다.',
+              })}
+
+              <div className="attention-stage-body">
+                <div className="attention-qkv-grid">
+                  <div className="attention-qkv-block">
+                    <p className={`attention-qkv-title ${valueTextClass}`}>{`Q (from POS ${queryToken?.position ?? 0})`}</p>
+                    <article ref={qVectorRef} className="attention-row attention-row--query">
+                      {renderVectorCells(queryHeadVector, 'q-vector', {
+                        cellRefFactory: (dimIndex) => (node) => {
+                          qCellRefs.current[dimIndex] = node
+                        },
+                        visibleMask: revealedQDims,
+                      })}
+                    </article>
+                  </div>
+
+                  <div className="attention-qkv-block">
+                    <p className={`attention-qkv-title ${valueTextClass}`}>K (0..query)</p>
+                    <div className="attention-matrix-list">
+                      {keyRows.map((row, rowIndex) => (
+                        <article
+                          key={`k-row-${row.position}`}
+                          ref={(node) => {
+                            kRowRefs.current[rowIndex] = node
                           }}
+                          className="attention-row"
                         >
-                          {isVisible ? row.value.toFixed(2) : ATTENTION_HIDDEN_PLACEHOLDER}
+                          <p className={`attention-row-label ${valueTextClass}`}>{`POS ${row.position} · ${row.label}`}</p>
+                          {renderVectorCells(row.vector, `k-${row.position}`, {
+                            cellRefFactory: (dimIndex) => (node) => {
+                              if (!kCellRefs.current[rowIndex]) {
+                                kCellRefs.current[rowIndex] = []
+                              }
+                              kCellRefs.current[rowIndex][dimIndex] = node
+                            },
+                            visibleMask: revealedKCells[rowIndex] ?? [],
+                          })}
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="attention-qkv-block">
+                    <p className={`attention-qkv-title ${valueTextClass}`}>V (0..query)</p>
+                    <div className="attention-matrix-list">
+                      {valueRows.map((row, rowIndex) => (
+                        <article
+                          key={`v-row-${row.position}`}
+                          ref={(node) => {
+                            vRowRefs.current[rowIndex] = node
+                          }}
+                          className="attention-row"
+                        >
+                          <p className={`attention-row-label ${valueTextClass}`}>{`POS ${row.position} · ${row.label}`}</p>
+                          {renderVectorCells(row.vector, `v-${row.position}`, {
+                            cellRefFactory: (dimIndex) => (node) => {
+                              if (!vCellRefs.current[rowIndex]) {
+                                vCellRefs.current[rowIndex] = []
+                              }
+                              vCellRefs.current[rowIndex][dimIndex] = node
+                            },
+                            visibleMask: revealedVCells[rowIndex] ?? [],
+                          })}
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="attention-stage attention-stage--weights reveal">
+              {renderStageHead({
+                key: 'stage-weights',
+                title: 'ATTN WEIGHTS',
+                infoTitle: 'Attention Weights',
+                infoBody: 'Q·K 점수를 softmax한 최종 확률 분포 벡터입니다. 각 POS가 얼마나 반영되는지를 나타냅니다.',
+              })}
+
+              <div className="attention-stage-body">
+                <div className="attention-weights-list">
+                  {weightRows.map((row, rowIndex) => {
+                    const displayedWeight = Number(displayedWeights[rowIndex] ?? 0)
+                    const color = getHeatColor(displayedWeight, 1)
+                    const useLightText = displayedWeight >= 0.7
+                    const isVisible = Boolean(revealedWeights[rowIndex])
+                    return (
+                      <article
+                        key={`weight-row-${row.position}`}
+                        ref={(node) => {
+                          weightRowRefs.current[rowIndex] = node
+                        }}
+                        className="attention-weight-row"
+                        style={{
+                          backgroundColor: color,
+                          color: useLightText ? '#fff' : '#000',
+                        }}
+                      >
+                        <span className={`attention-weight-meta ${valueTextClass}`}>{`POS ${row.position}`}</span>
+                        <span
+                          ref={(node) => {
+                            weightValueRefs.current[rowIndex] = node
+                          }}
+                          className={`attention-weight-values ${!isVisible ? 'attention-weight-value--hidden' : ''} ${valueTextClass}`.trim()}
+                        >
+                          {isVisible ? displayedWeight.toFixed(4) : ATTENTION_HIDDEN_PLACEHOLDER}
                         </span>
-                      </div>
+                      </article>
                     )
                   })}
                 </div>
-              </article>
-            </div>
-          </section>
-
-          <section className="attention-stage attention-stage--qkv reveal">
-            {renderStageHead({
-              key: 'stage-qkv',
-              title: 'Q / K / V',
-              badge: 'HEAD 0',
-              infoTitle: 'Q / K / V',
-              infoBody: 'Q는 현재 위치 x에서 생성합니다. K/V는 causal 범위(0..query)의 값을 표시하며, 이전 위치는 cache 결과를 사용합니다.',
-            })}
-
-            <div className="attention-stage-body">
-              <div className="attention-qkv-grid">
-                <div className="attention-qkv-block">
-                  <p className={`attention-qkv-title ${valueTextClass}`}>{`Q (from POS ${queryToken?.position ?? 0})`}</p>
-                  <article ref={qVectorRef} className="attention-row attention-row--query">
-                    {renderVectorCells(queryHeadVector, 'q-vector', {
-                      cellRefFactory: (dimIndex) => (node) => {
-                        qCellRefs.current[dimIndex] = node
-                      },
-                      visibleMask: revealedQDims,
-                    })}
-                  </article>
-                </div>
-
-                <div className="attention-qkv-block">
-                  <p className={`attention-qkv-title ${valueTextClass}`}>K (0..query)</p>
-                  <div className="attention-matrix-list">
-                    {keyRows.map((row, rowIndex) => (
-                      <article
-                        key={`k-row-${row.position}`}
-                        ref={(node) => {
-                          kRowRefs.current[rowIndex] = node
-                        }}
-                        className="attention-row"
-                      >
-                        <p className={`attention-row-label ${valueTextClass}`}>{`POS ${row.position} · ${row.label}`}</p>
-                        {renderVectorCells(row.vector, `k-${row.position}`, {
-                          cellRefFactory: (dimIndex) => (node) => {
-                            if (!kCellRefs.current[rowIndex]) {
-                              kCellRefs.current[rowIndex] = []
-                            }
-                            kCellRefs.current[rowIndex][dimIndex] = node
-                          },
-                          visibleMask: revealedKCells[rowIndex] ?? [],
-                        })}
-                      </article>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="attention-qkv-block">
-                  <p className={`attention-qkv-title ${valueTextClass}`}>V (0..query)</p>
-                  <div className="attention-matrix-list">
-                    {valueRows.map((row, rowIndex) => (
-                      <article
-                        key={`v-row-${row.position}`}
-                        ref={(node) => {
-                          vRowRefs.current[rowIndex] = node
-                        }}
-                        className="attention-row"
-                      >
-                        <p className={`attention-row-label ${valueTextClass}`}>{`POS ${row.position} · ${row.label}`}</p>
-                        {renderVectorCells(row.vector, `v-${row.position}`, {
-                          cellRefFactory: (dimIndex) => (node) => {
-                            if (!vCellRefs.current[rowIndex]) {
-                              vCellRefs.current[rowIndex] = []
-                            }
-                            vCellRefs.current[rowIndex][dimIndex] = node
-                          },
-                          visibleMask: revealedVCells[rowIndex] ?? [],
-                        })}
-                      </article>
-                    ))}
-                  </div>
-                </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section className="attention-stage attention-stage--weights reveal">
-            {renderStageHead({
-              key: 'stage-weights',
-              title: 'ATTN WEIGHTS',
-              infoTitle: 'Attention Weights',
-              infoBody: 'Q·K 점수를 softmax한 최종 확률 분포 벡터입니다. 각 POS가 얼마나 반영되는지를 나타냅니다.',
-            })}
+            <section className="attention-stage attention-stage--output reveal">
+              {renderStageHead({
+                key: 'stage-output',
+                title: 'ATTENTION OUTPUT',
+                badge: `step ${safeOutputStep}/${totalSteps}`,
+                infoTitle: 'Attention Output',
+                infoBody: '각 위치의 기여 벡터(weight_t * V_t)를 순서대로 누적합해 최종 output을 만듭니다.',
+              })}
 
-            <div className="attention-stage-body">
-              <div className="attention-weights-list">
-                {weightRows.map((row, rowIndex) => {
-                  const displayedWeight = Number(displayedWeights[rowIndex] ?? 0)
-                  const color = getHeatColor(displayedWeight, 1)
-                  const useLightText = displayedWeight >= 0.7
-                  const isVisible = Boolean(revealedWeights[rowIndex])
-                  return (
+              <div className="attention-stage-body">
+                <div className="attention-contrib-list">
+                  {weightedVRows.map((row, rowIndex) => (
                     <article
-                      key={`weight-row-${row.position}`}
+                      key={`contrib-row-${row.position}`}
                       ref={(node) => {
-                        weightRowRefs.current[rowIndex] = node
+                        contribRowRefs.current[rowIndex] = node
                       }}
-                      className="attention-weight-row"
-                      style={{
-                        backgroundColor: color,
-                        color: useLightText ? '#fff' : '#000',
-                      }}
+                      className={`attention-row ${rowIndex < safeOutputStep ? 'attention-row--done' : ''}`}
                     >
-                      <span className={`attention-weight-meta ${valueTextClass}`}>{`POS ${row.position}`}</span>
-                      <span
-                        ref={(node) => {
-                          weightValueRefs.current[rowIndex] = node
-                        }}
-                        className={`attention-weight-values ${!isVisible ? 'attention-weight-value--hidden' : ''} ${valueTextClass}`.trim()}
-                      >
-                        {isVisible ? displayedWeight.toFixed(4) : ATTENTION_HIDDEN_PLACEHOLDER}
-                      </span>
+                      <p className={`attention-row-label ${valueTextClass}`}>
+                        {`POS ${row.position} · w ${
+                          revealedWeights[rowIndex] ? Number(displayedWeights[rowIndex] ?? 0).toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER
+                        }`}
+                      </p>
+                      {renderVectorCells(row.vector, `contrib-${row.position}`, {
+                        cellRefFactory: (dimIndex) => (node) => {
+                          if (!contribCellRefs.current[rowIndex]) {
+                            contribCellRefs.current[rowIndex] = []
+                          }
+                          contribCellRefs.current[rowIndex][dimIndex] = node
+                        },
+                        visibleMask: revealedContribCells[rowIndex] ?? [],
+                      })}
                     </article>
-                  )
-                })}
+                  ))}
+                </div>
+
+                <article ref={outputVectorRef} className="attention-row attention-row--output">
+                  <p className={`attention-row-label ${valueTextClass}`}>Σ(weight_t * V_t)</p>
+                  {renderVectorCells(displayedOutputVector, 'output-final', {
+                    cellRefFactory: (dimIndex) => (node) => {
+                      outputCellRefs.current[dimIndex] = node
+                    },
+                    visibleMask: revealedOutputDims,
+                  })}
+                </article>
               </div>
-            </div>
-          </section>
+            </section>
+          </div>
 
-          <section className="attention-stage attention-stage--output reveal">
-            {renderStageHead({
-              key: 'stage-output',
-              title: 'ATTENTION OUTPUT',
-              badge: `step ${safeOutputStep}/${totalSteps}`,
-              infoTitle: 'Attention Output',
-              infoBody: '각 위치의 기여 벡터(weight_t * V_t)를 순서대로 누적합해 최종 output을 만듭니다.',
-            })}
-
-            <div className="attention-stage-body">
-             
-              <div className="attention-contrib-list">
-                {weightedVRows.map((row, rowIndex) => (
-                  <article
-                    key={`contrib-row-${row.position}`}
-                    ref={(node) => {
-                      contribRowRefs.current[rowIndex] = node
-                    }}
-                    className={`attention-row ${rowIndex < safeOutputStep ? 'attention-row--done' : ''}`}
-                  >
-                    <p className={`attention-row-label ${valueTextClass}`}>
-                      {`POS ${row.position} · w ${
-                        revealedWeights[rowIndex] ? Number(displayedWeights[rowIndex] ?? 0).toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER
-                      }`}
-                    </p>
-                    {renderVectorCells(row.vector, `contrib-${row.position}`, {
-                      cellRefFactory: (dimIndex) => (node) => {
-                        if (!contribCellRefs.current[rowIndex]) {
-                          contribCellRefs.current[rowIndex] = []
-                        }
-                        contribCellRefs.current[rowIndex][dimIndex] = node
-                      },
-                      visibleMask: revealedContribCells[rowIndex] ?? [],
-                    })}
-                  </article>
-                ))}
+          <div className="attention-extended-shell">
+            {!isLastQuery ? (
+              <div className="attention-extended-gate">
+                <p className="attention-extended-gate-title">MHA / RESIDUAL 확장</p>
+                <p className="attention-extended-gate-desc">예시 인덱스를 마지막까지 이동하면 아래 계산이 활성화됩니다.</p>
+                <div className="attention-extended-skeleton-row" />
+                <div className="attention-extended-skeleton-row" />
+                <div className="attention-extended-skeleton-row" />
               </div>
+            ) : (
+              <div className="attention-extended-grid">
+                <section className="attention-extended-stage">
+                  {renderStageHead({
+                    key: 'stage-heads',
+                    title: 'HEAD 0~3 OUTPUTS',
+                    infoTitle: 'Head Outputs',
+                    infoBody: '상단에서 계산한 head0 외에도 head1~3이 존재하며, 4개 head output이 concat되어 MHA 입력(x_attn)이 됩니다.',
+                  })}
+                  <div className="attention-stage-body">
+                    {headOutputRows.map((row, headIdx) => (
+                      <article
+                        key={`head-output-row-${headIdx}`}
+                        ref={(node) => {
+                          headOutputRowRefs.current[headIdx] = node
+                        }}
+                        className={`attention-row ${headIdx === 0 ? 'attention-row--query' : ''}`}
+                      >
+                        <p className={`attention-row-label ${valueTextClass}`}>{`HEAD ${headIdx} OUTPUT`}</p>
+                        {headIdx > 0 ? (
+                          <div className="attention-head-summary">
+                            <span
+                              ref={(node) => {
+                                headSummaryQRefs.current[headIdx] = node
+                              }}
+                              className={`attention-head-summary-node ${valueTextClass}`}
+                            >
+                              Q{headIdx}
+                            </span>
+                            <span
+                              ref={(node) => {
+                                headSummaryKRefs.current[headIdx] = node
+                              }}
+                              className={`attention-head-summary-node ${valueTextClass}`}
+                            >
+                              K{headIdx}
+                            </span>
+                            <span
+                              ref={(node) => {
+                                headSummaryVRefs.current[headIdx] = node
+                              }}
+                              className={`attention-head-summary-node ${valueTextClass}`}
+                            >
+                              V{headIdx}
+                            </span>
+                          </div>
+                        ) : null}
+                        {renderVectorCells(row.vector, `head-output-${headIdx}`, {
+                          cellRefFactory: (dimIndex) => (node) => {
+                            if (!headOutputCellRefs.current[headIdx]) {
+                              headOutputCellRefs.current[headIdx] = []
+                            }
+                            headOutputCellRefs.current[headIdx][dimIndex] = node
+                          },
+                          visibleMask: revealedHeadOutputCells[headIdx] ?? [],
+                        })}
+                      </article>
+                    ))}
+                  </div>
+                </section>
 
-              <article ref={outputVectorRef} className="attention-row attention-row--output">
-                <p className={`attention-row-label ${valueTextClass}`}>Σ(weight_t * V_t)</p>
-                {renderVectorCells(displayedOutputVector, 'output-final', {
-                  cellRefFactory: (dimIndex) => (node) => {
-                    outputCellRefs.current[dimIndex] = node
-                  },
-                  visibleMask: revealedOutputDims,
-                })}
-              </article>
-            </div>
-          </section>
+                <section className="attention-extended-stage">
+                  {renderStageHead({
+                    key: 'stage-mha',
+                    title: 'MHA OUTPUT',
+                    infoTitle: 'MHA Output',
+                    infoBody: '4개 head output을 concat한 x_attn(16차원)에 W_O를 곱해 multi-head attention output을 만듭니다.',
+                  })}
+                  <div className="attention-stage-body">
+                    <article ref={mhaInputRowRef} className="attention-row">
+                      <p className={`attention-row-label ${valueTextClass}`}>x_attn = concat(head0..3)</p>
+                      {renderVectorCells(xAttnVector, 'mha-input', {
+                        dense: true,
+                        cellRefFactory: (dimIndex) => (node) => {
+                          mhaInputCellRefs.current[dimIndex] = node
+                        },
+                        visibleMask: revealedMhaInputDims,
+                      })}
+                    </article>
+                    <article ref={mhaOutputRowRef} className="attention-row attention-row--output">
+                      <p className={`attention-row-label ${valueTextClass}`}>linear(x_attn, W_O)</p>
+                      {renderVectorCells(displayedMhaOutputVector, 'mha-output', {
+                        dense: true,
+                        cellRefFactory: (dimIndex) => (node) => {
+                          mhaOutputCellRefs.current[dimIndex] = node
+                        },
+                        visibleMask: revealedMhaOutputDims,
+                      })}
+                    </article>
+                  </div>
+                </section>
+
+                <section className="attention-extended-stage">
+                  {renderStageHead({
+                    key: 'stage-result',
+                    title: 'ATTENTION BLOCK RESULT',
+                    infoTitle: 'Attention Block Result',
+                    infoBody: 'Final Embedding(x)와 MHA Output을 residual로 더한 결과 벡터입니다.',
+                  })}
+                  <div className="attention-stage-body">
+                    <article ref={resultRowRef} className="attention-row attention-row--output">
+                      <p className={`attention-row-label ${valueTextClass}`}>x + linear(x_attn, W_O)</p>
+                      {renderVectorCells(displayedResult, 'attention-block-result', {
+                        dense: true,
+                        cellRefFactory: (dimIndex) => (node) => {
+                          resultCellRefs.current[dimIndex] = node
+                        },
+                        visibleMask: revealedResultDims,
+                      })}
+                    </article>
+                  </div>
+                </section>
+              </div>
+            )}
+          </div>
+
+          <svg
+            ref={bridgeLayerRef}
+            className="attention-bridge-layer"
+            aria-hidden="true"
+            preserveAspectRatio="none"
+            viewBox="0 0 100 100"
+          >
+            <path ref={bridgeTopPathRef} className="attention-bridge-path" d="" />
+            <path ref={bridgeResultPathRef} className="attention-bridge-path" d="" />
+          </svg>
 
           <div ref={flowLayerRef} className="attention-flow-layer" aria-hidden="true" />
         </div>
@@ -2499,9 +2967,11 @@ function App() {
           Array.isArray(payload?.attention?.attn_wq) &&
           Array.isArray(payload?.attention?.attn_wk) &&
           Array.isArray(payload?.attention?.attn_wv) &&
+          Array.isArray(payload?.attention?.attn_wo) &&
           Array.isArray(payload?.attention?.attn_wq?.[0]) &&
           Array.isArray(payload?.attention?.attn_wk?.[0]) &&
-          Array.isArray(payload?.attention?.attn_wv?.[0])
+          Array.isArray(payload?.attention?.attn_wv?.[0]) &&
+          Array.isArray(payload?.attention?.attn_wo?.[0])
 
         if (!isActive) {
           return

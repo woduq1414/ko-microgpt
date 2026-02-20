@@ -860,6 +860,13 @@ a {
   position: relative;
 }
 
+.attention-pipeline-content {
+  position: relative;
+  display: grid;
+  gap: 0.62rem;
+  padding-bottom: 0.5rem;
+}
+
 .attention-pipeline-track {
   position: relative;
   display: grid;
@@ -868,6 +875,97 @@ a {
   width: 100%;
   min-width: 0;
   padding: 0.5rem;
+  z-index: 16;
+}
+
+.attention-extended-shell {
+  position: relative;
+  z-index: 16;
+  padding: 0 0.5rem;
+}
+
+.attention-extended-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.attention-extended-stage {
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 6px 6px 0 0 #000;
+  padding: 0.4rem;
+  min-height: 360px;
+}
+
+.attention-extended-gate {
+  border: 4px solid #000;
+  background: #fffdf5;
+  box-shadow: 6px 6px 0 0 #000;
+  padding: 0.7rem;
+}
+
+.attention-extended-gate-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.attention-extended-gate-desc {
+  margin: 0.45rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.attention-extended-skeleton-row {
+  margin-top: 0.5rem;
+  height: 2.1rem;
+  border: 3px dashed #000;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f7f7f7 0,
+    #f7f7f7 10px,
+    #ececec 10px,
+    #ececec 20px
+  );
+}
+
+.attention-head-summary {
+  margin-top: 0.24rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.16rem;
+}
+
+.attention-head-summary-node {
+  border: 2px solid #000;
+  background: #f4f4ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  line-height: 1;
+  padding: 0.12rem 0.1rem;
+}
+
+.attention-bridge-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.attention-bridge-path {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+  stroke-dasharray: 8 7;
 }
 
 .attention-flow-layer {
@@ -1340,6 +1438,10 @@ a {
     width: 100%;
     min-width: 0;
   }
+
+  .attention-extended-stage {
+    min-height: 340px;
+  }
 }
 
 @media (max-width: 767px) {
@@ -1401,6 +1503,24 @@ a {
     min-width: 980px;
     gap: 0.4rem;
     padding: 0.4rem;
+  }
+
+  .attention-extended-shell {
+    padding: 0 0.4rem 0.4rem;
+  }
+
+  .attention-extended-grid {
+    min-width: 980px;
+    gap: 0.4rem;
+  }
+
+  .attention-extended-stage {
+    min-height: 330px;
+    padding: 0.32rem;
+  }
+
+  .attention-extended-gate {
+    min-width: 980px;
   }
 
   .attention-stage {

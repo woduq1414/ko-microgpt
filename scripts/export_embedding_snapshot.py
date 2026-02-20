@@ -73,6 +73,7 @@ def main() -> None:
     attn_wq = _validate_matrix_shape(state_dict.get("layer0.attn_wq"), n_embd, n_embd, "layer0.attn_wq")
     attn_wk = _validate_matrix_shape(state_dict.get("layer0.attn_wk"), n_embd, n_embd, "layer0.attn_wk")
     attn_wv = _validate_matrix_shape(state_dict.get("layer0.attn_wv"), n_embd, n_embd, "layer0.attn_wv")
+    attn_wo = _validate_matrix_shape(state_dict.get("layer0.attn_wo"), n_embd, n_embd, "layer0.attn_wo")
 
     uchars = tokenizer.get("uchars")
     bos = tokenizer.get("BOS")
@@ -98,6 +99,7 @@ def main() -> None:
             "attn_wq": _to_float_matrix(attn_wq),
             "attn_wk": _to_float_matrix(attn_wk),
             "attn_wv": _to_float_matrix(attn_wv),
+            "attn_wo": _to_float_matrix(attn_wo),
         },
     }
 
