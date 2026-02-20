@@ -951,6 +951,26 @@ a {
   padding: 0.12rem 0.1rem;
 }
 
+.attention-mha-split {
+  margin-top: 0.32rem;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.34rem;
+  align-items: stretch;
+}
+
+.attention-mha-pane {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.attention-mha-pane.attention-row--output {
+  margin-top: 0;
+}
+
 .attention-bridge-layer {
   position: absolute;
   inset: 0;
@@ -973,6 +993,36 @@ a {
   inset: 0;
   pointer-events: none;
   z-index: 40;
+}
+
+.attention-op-sticker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  border: 4px solid #000;
+  box-shadow: 6px 6px 0 0 #000;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 8;
+}
+
+.attention-op-sticker--concat {
+  background: #ffd93d;
+}
+
+.attention-op-sticker--linear {
+  background: #c4b5fd;
+}
+
+.attention-op-sticker--residual {
+  background: #86efac;
 }
 
 .attention-flow-dot {
@@ -1256,6 +1306,25 @@ a {
   min-width: 0;
 }
 
+.attention-vector-column--dense16 {
+  gap: 0.12rem;
+}
+
+.attention-vector-line--dense16 {
+  grid-template-columns: 1.45rem minmax(0, 1fr);
+  gap: 0.13rem;
+}
+
+.attention-vector-line-dim--dense16 {
+  width: 1.45rem;
+  min-width: 1.45rem;
+  padding: 0.08rem 0.08rem;
+}
+
+.attention-vector-line-value--dense16 {
+  padding: 0.08rem 0.11rem;
+}
+
 .attention-value--hidden {
   background: #f3f3f3 !important;
   color: #707070 !important;
@@ -1312,6 +1381,15 @@ a {
   transform: translate(-1px, -1px);
   box-shadow: 3px 3px 0 0 #000;
   background: #ffd93d !important;
+}
+
+.attention-vector-line-value.attention-cell {
+  text-align: right;
+  padding: 0.12rem 0.22rem;
+}
+
+.attention-vector-line-value--dense16.attention-cell {
+  padding: 0.08rem 0.11rem;
 }
 
 .attention-qkv-grid {
@@ -1523,6 +1601,10 @@ a {
     min-width: 980px;
   }
 
+  .attention-mha-split {
+    gap: 0.28rem;
+  }
+
   .attention-stage {
     min-height: 500px;
     padding: 0.32rem;
@@ -1552,6 +1634,22 @@ a {
     padding: 0.1rem 0.16rem;
   }
 
+  .attention-vector-line--dense16 {
+    grid-template-columns: 1.2rem minmax(0, 1fr);
+    gap: 0.09rem;
+  }
+
+  .attention-vector-line-dim--dense16 {
+    width: 1.2rem;
+    min-width: 1.2rem;
+    padding: 0.07rem 0.06rem;
+  }
+
+  .attention-vector-line-value--dense16,
+  .attention-vector-line-value--dense16.attention-cell {
+    padding: 0.07rem 0.08rem;
+  }
+
   .attention-weight-row {
     grid-template-columns: 2.7rem 1fr;
     padding: 0.16rem 0.18rem;
@@ -1560,6 +1658,12 @@ a {
   .attention-flow-dot {
     width: 8px;
     height: 8px;
+  }
+
+  .attention-op-sticker {
+    padding: 0.22rem 0.48rem;
+    font-size: 0.52rem;
+    letter-spacing: 0.12em;
   }
 }
 

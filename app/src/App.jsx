@@ -1392,6 +1392,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const outputCellRefs = useRef([])
   const contribRowRefs = useRef([])
   const outputVectorRef = useRef(null)
+  const headsStageRef = useRef(null)
+  const mhaStageRef = useRef(null)
   const headOutputRowRefs = useRef([])
   const headOutputCellRefs = useRef([])
   const headSummaryQRefs = useRef([])
@@ -1484,7 +1486,6 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const safeQueryIndex = modelSequence.length ? clamp(queryIndex, 0, modelSequence.length - 1) : 0
   const causalSequence = hasAttentionData ? modelSequence.slice(0, safeQueryIndex + 1) : []
   const queryToken = modelSequence[safeQueryIndex] ?? null
-  const isLastQuery = modelSequence.length > 0 && safeQueryIndex === modelSequence.length - 1
 
   const xVectors = modelSequence.map((item) => {
     const tokenRow = wte[item.tokenId] ?? []
@@ -1638,7 +1639,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     ...attentionBlockResultVector.map((value) => Math.abs(value)),
   )
 
-  const animationSignature = `${currentExampleName}-${safeQueryIndex}-${totalSteps}-${isLastQuery ? 'last' : 'mid'}`
+  const animationSignature = `${currentExampleName}-${safeQueryIndex}-${totalSteps}`
 
   useLayoutEffect(() => {
     const flowLayer = flowLayerRef.current
@@ -1810,14 +1811,12 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         setDisplayedWeights(weightRows.map((row) => Number(row.value ?? 0)))
         setDisplayedOutput(attentionOutput)
         setRevealedOutputDims(Array.from({ length: headDim }, () => true))
-        if (isLastQuery) {
-          setDisplayedMhaOutput(mhaOutputVector)
-          setDisplayedResultVector(attentionBlockResultVector)
-          setRevealedHeadOutputCells(Array.from({ length: nHead }, () => Array.from({ length: headDim }, () => true)))
-          setRevealedMhaInputDims(Array.from({ length: nEmbd }, () => true))
-          setRevealedMhaOutputDims(Array.from({ length: nEmbd }, () => true))
-          setRevealedResultDims(Array.from({ length: nEmbd }, () => true))
-        }
+        setDisplayedMhaOutput(mhaOutputVector)
+        setDisplayedResultVector(attentionBlockResultVector)
+        setRevealedHeadOutputCells(Array.from({ length: nHead }, () => Array.from({ length: headDim }, () => true)))
+        setRevealedMhaInputDims(Array.from({ length: nEmbd }, () => true))
+        setRevealedMhaOutputDims(Array.from({ length: nEmbd }, () => true))
+        setRevealedResultDims(Array.from({ length: nEmbd }, () => true))
         setIsAnimating(false)
       },
     })
@@ -1887,6 +1886,65 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         startAt + 0.02,
       )
       timeline.to(dot, { opacity: 0, duration: 0.1, ease: 'power2.in' }, startAt + 0.3)
+    }
+
+    const appendAttentionStickerTimeline = ({
+      label,
+      startAt = 0,
+      duration = 0.4,
+      variant = 'concat',
+      anchor = 'between',
+      fromNode = null,
+      toNode = null,
+      targetNode = null,
+    }) => {
+      let centerX = null
+      let centerY = null
+
+      if (anchor === 'between') {
+        const fromRect = fromNode?.getBoundingClientRect()
+        const toRect = toNode?.getBoundingClientRect()
+        if (!fromRect || !toRect) {
+          return
+        }
+        centerX = (fromRect.right + toRect.left) * 0.5 - flowLayerRect.left
+        centerY = (fromRect.top + fromRect.bottom + toRect.top + toRect.bottom) * 0.25 - flowLayerRect.top
+      } else if (anchor === 'top-center') {
+        const targetRect = targetNode?.getBoundingClientRect()
+        if (!targetRect) {
+          return
+        }
+        centerX = targetRect.left + targetRect.width * 0.5 - flowLayerRect.left
+        centerY = targetRect.top - flowLayerRect.top + 8
+      } else {
+        return
+      }
+
+      const sticker = document.createElement('span')
+      sticker.className = `attention-op-sticker attention-op-sticker--${variant}`
+      sticker.textContent = label
+      sticker.style.left = `${centerX}px`
+      sticker.style.top = `${centerY}px`
+      flowLayer.appendChild(sticker)
+      createdNodes.push(sticker)
+
+      const safeDuration = Math.max(0.24, Number(duration) || 0.4)
+      const fadeInDuration = 0.12
+      const fadeOutDuration = 0.18
+      const visibleHold = Math.max(0.04, safeDuration - fadeInDuration - fadeOutDuration)
+
+      timeline.fromTo(
+        sticker,
+        { opacity: 0, scale: 0.86, rotate: -2 },
+        { opacity: 1, scale: 1.02, rotate: 1, duration: fadeInDuration, ease: 'power2.out' },
+        startAt,
+      )
+      timeline.to(sticker, { opacity: 1, duration: visibleHold, ease: 'none' }, startAt + fadeInDuration)
+      timeline.to(
+        sticker,
+        { opacity: 0, scale: 1.04, rotate: 2, duration: fadeOutDuration, ease: 'power2.in' },
+        startAt + fadeInDuration + visibleHold,
+      )
     }
 
     timeline.call(() => {
@@ -2020,56 +2078,80 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       })
       addClassPulse(outputVectorRef.current, 'attention-row--active', outputStageStart + weightedVRows.length * 0.1, 0.16)
 
-      if (isLastQuery) {
-        const headStageStart = outputStageStart + weightedVRows.length * 0.1 + 0.08
-        for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
-          const at = headStageStart + dimIndex * 0.03
-          addClassPulse(outputCellRefs.current[dimIndex], 'attention-cell--pulse', at, 0.12)
-          addClassPulse(headOutputCellRefs.current[0]?.[dimIndex], 'attention-cell--active', at + 0.01, 0.12)
-          revealHeadOutputCellAt(0, dimIndex, at + 0.013)
-        }
-        addClassPulse(headOutputRowRefs.current[0], 'attention-row--active', headStageStart + headDim * 0.03, 0.13)
-
-        const summaryStageStart = headStageStart + headDim * 0.03 + 0.06
-        for (let headIdx = 1; headIdx < nHead; headIdx += 1) {
-          const rowBase = summaryStageStart + (headIdx - 1) * 0.09
-          for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
-            const at = rowBase + dimIndex * 0.02
-            addClassPulse(headSummaryQRefs.current[headIdx], 'attention-cell--pulse', at, 0.1)
-            addClassPulse(headSummaryKRefs.current[headIdx], 'attention-cell--pulse', at + 0.006, 0.1)
-            addClassPulse(headSummaryVRefs.current[headIdx], 'attention-cell--pulse', at + 0.012, 0.1)
-            addClassPulse(headOutputCellRefs.current[headIdx]?.[dimIndex], 'attention-cell--active', at + 0.018, 0.1)
-            revealHeadOutputCellAt(headIdx, dimIndex, at + 0.02)
-          }
-          addClassPulse(headOutputRowRefs.current[headIdx], 'attention-row--active', rowBase + headDim * 0.02, 0.11)
-        }
-
-        const concatStageStart = summaryStageStart + Math.max(0, nHead - 1) * 0.09 + 0.04
-        for (let flatIndex = 0; flatIndex < nEmbd; flatIndex += 1) {
-          const at = concatStageStart + flatIndex * 0.008
-          addClassPulse(mhaInputCellRefs.current[flatIndex], 'attention-cell--active', at + 0.01, 0.08)
-          revealMhaInputDimAt(flatIndex, at + 0.012)
-        }
-        addClassPulse(mhaInputRowRef.current, 'attention-row--active', concatStageStart + nEmbd * 0.008, 0.12)
-
-        const mhaStageStart = concatStageStart + nEmbd * 0.008 + 0.05
-        for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-          const at = mhaStageStart + dimIndex * 0.01
-          addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.008, 0.09)
-          revealMhaOutputDimAt(dimIndex, mhaOutputVector[dimIndex] ?? 0, at + 0.01)
-        }
-        addClassPulse(mhaOutputRowRef.current, 'attention-row--active', mhaStageStart + nEmbd * 0.01, 0.12)
-
-        const resultStageStart = mhaStageStart + nEmbd * 0.01 + 0.05
-        for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-          const at = resultStageStart + dimIndex * 0.011
-          addClassPulse(xValueRefs.current[dimIndex], 'attention-cell--pulse', at, 0.08)
-          addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.004, 0.08)
-          addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--active', at + 0.012, 0.1)
-          revealResultDimAt(dimIndex, attentionBlockResultVector[dimIndex] ?? 0, at + 0.014)
-        }
-        addClassPulse(resultRowRef.current, 'attention-row--active', resultStageStart + nEmbd * 0.011, 0.14)
+      const headStageStart = outputStageStart + weightedVRows.length * 0.1 + 0.08
+      for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+        const at = headStageStart + dimIndex * 0.03
+        addClassPulse(outputCellRefs.current[dimIndex], 'attention-cell--pulse', at, 0.12)
+        addClassPulse(headOutputCellRefs.current[0]?.[dimIndex], 'attention-cell--active', at + 0.01, 0.12)
+        revealHeadOutputCellAt(0, dimIndex, at + 0.013)
       }
+      addClassPulse(headOutputRowRefs.current[0], 'attention-row--active', headStageStart + headDim * 0.03, 0.13)
+
+      const summaryStageStart = headStageStart + headDim * 0.03 + 0.06
+      for (let headIdx = 1; headIdx < nHead; headIdx += 1) {
+        const rowBase = summaryStageStart + (headIdx - 1) * 0.09
+        for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+          const at = rowBase + dimIndex * 0.02
+          addClassPulse(headSummaryQRefs.current[headIdx], 'attention-cell--pulse', at, 0.1)
+          addClassPulse(headSummaryKRefs.current[headIdx], 'attention-cell--pulse', at + 0.006, 0.1)
+          addClassPulse(headSummaryVRefs.current[headIdx], 'attention-cell--pulse', at + 0.012, 0.1)
+          addClassPulse(headOutputCellRefs.current[headIdx]?.[dimIndex], 'attention-cell--active', at + 0.018, 0.1)
+          revealHeadOutputCellAt(headIdx, dimIndex, at + 0.02)
+        }
+        addClassPulse(headOutputRowRefs.current[headIdx], 'attention-row--active', rowBase + headDim * 0.02, 0.11)
+      }
+
+      const concatStageStart = summaryStageStart + Math.max(0, nHead - 1) * 0.09 + 0.04
+      appendAttentionStickerTimeline({
+        label: 'CONCAT',
+        startAt: concatStageStart,
+        duration: nEmbd * 0.008 + 0.12,
+        variant: 'concat',
+        anchor: 'between',
+        fromNode: headsStageRef.current,
+        toNode: mhaStageRef.current,
+      })
+      for (let flatIndex = 0; flatIndex < nEmbd; flatIndex += 1) {
+        const at = concatStageStart + flatIndex * 0.008
+        addClassPulse(mhaInputCellRefs.current[flatIndex], 'attention-cell--active', at + 0.01, 0.08)
+        revealMhaInputDimAt(flatIndex, at + 0.012)
+      }
+      addClassPulse(mhaInputRowRef.current, 'attention-row--active', concatStageStart + nEmbd * 0.008, 0.12)
+
+      const mhaStageStart = concatStageStart + nEmbd * 0.008 + 0.05
+      appendAttentionStickerTimeline({
+        label: 'LINEAR',
+        startAt: mhaStageStart,
+        duration: nEmbd * 0.01 + 0.12,
+        variant: 'linear',
+        anchor: 'between',
+        fromNode: mhaInputRowRef.current,
+        toNode: mhaOutputRowRef.current,
+      })
+      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+        const at = mhaStageStart + dimIndex * 0.01
+        addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.008, 0.09)
+        revealMhaOutputDimAt(dimIndex, mhaOutputVector[dimIndex] ?? 0, at + 0.01)
+      }
+      addClassPulse(mhaOutputRowRef.current, 'attention-row--active', mhaStageStart + nEmbd * 0.01, 0.12)
+
+      const resultStageStart = mhaStageStart + nEmbd * 0.01 + 0.05
+      appendAttentionStickerTimeline({
+        label: 'RESIDUAL',
+        startAt: resultStageStart,
+        duration: nEmbd * 0.011 + 0.14,
+        variant: 'residual',
+        anchor: 'top-center',
+        targetNode: resultRowRef.current,
+      })
+      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+        const at = resultStageStart + dimIndex * 0.011
+        addClassPulse(xValueRefs.current[dimIndex], 'attention-cell--pulse', at, 0.08)
+        addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.004, 0.08)
+        addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--active', at + 0.012, 0.1)
+        revealResultDimAt(dimIndex, attentionBlockResultVector[dimIndex] ?? 0, at + 0.014)
+      }
+      addClassPulse(resultRowRef.current, 'attention-row--active', resultStageStart + nEmbd * 0.011, 0.14)
 
       return () => {
         timeline.kill()
@@ -2138,62 +2220,86 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     })
     addClassPulse(outputVectorRef.current, 'attention-row--active', stageDStart + weightedVRows.length * 0.2, 0.16)
 
-    if (isLastQuery) {
-      const stageEStart = stageDStart + weightedVRows.length * 0.2 + 0.16
-      for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
-        const at = stageEStart + dimIndex * 0.05
-        spawnTransfer(outputCellRefs.current[dimIndex], headOutputCellRefs.current[0]?.[dimIndex], at, 'o')
-        addClassPulse(outputCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.01, 0.12)
-        addClassPulse(headOutputCellRefs.current[0]?.[dimIndex], 'attention-cell--active', at + 0.06, 0.14)
-        revealHeadOutputCellAt(0, dimIndex, at + 0.064)
-      }
-      addClassPulse(headOutputRowRefs.current[0], 'attention-row--active', stageEStart + headDim * 0.05, 0.16)
-
-      const stageFStart = stageEStart + headDim * 0.05 + 0.16
-      for (let headIdx = 1; headIdx < nHead; headIdx += 1) {
-        const rowBase = stageFStart + (headIdx - 1) * 0.23
-        for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
-          const at = rowBase + dimIndex * 0.04
-          spawnTransfer(headSummaryQRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at, 'q')
-          spawnTransfer(headSummaryKRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at + 0.01, 'k')
-          spawnTransfer(headSummaryVRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at + 0.02, 'v')
-          addClassPulse(headOutputCellRefs.current[headIdx]?.[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
-          revealHeadOutputCellAt(headIdx, dimIndex, at + 0.064)
-        }
-        addClassPulse(headOutputRowRefs.current[headIdx], 'attention-row--active', rowBase + headDim * 0.04, 0.14)
-      }
-
-      const stageGStart = stageFStart + Math.max(0, nHead - 1) * 0.23 + 0.16
-      for (let headIdx = 0; headIdx < nHead; headIdx += 1) {
-        for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
-          const flatIndex = headIdx * headDim + dimIndex
-          const at = stageGStart + flatIndex * 0.024
-          spawnTransfer(headOutputCellRefs.current[headIdx]?.[dimIndex], mhaInputCellRefs.current[flatIndex], at, 'o')
-          addClassPulse(mhaInputCellRefs.current[flatIndex], 'attention-cell--active', at + 0.06, 0.12)
-          revealMhaInputDimAt(flatIndex, at + 0.064)
-        }
-      }
-      addClassPulse(mhaInputRowRef.current, 'attention-row--active', stageGStart + nEmbd * 0.024, 0.14)
-
-      const stageG2Start = stageGStart + nEmbd * 0.024 + 0.12
-      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-        const at = stageG2Start + dimIndex * 0.028
-        spawnTransfer(mhaInputCellRefs.current[dimIndex], mhaOutputCellRefs.current[dimIndex], at, 'w')
-        addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
-        revealMhaOutputDimAt(dimIndex, mhaOutputVector[dimIndex] ?? 0, at + 0.064)
-      }
-      addClassPulse(mhaOutputRowRef.current, 'attention-row--active', stageG2Start + nEmbd * 0.028, 0.14)
-
-      const stageHStart = stageG2Start + nEmbd * 0.028 + 0.14
-      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
-        const at = stageHStart + dimIndex * 0.03
-        spawnTransfer(xValueRefs.current[dimIndex], resultCellRefs.current[dimIndex], at, 'q')
-        spawnTransfer(mhaOutputCellRefs.current[dimIndex], resultCellRefs.current[dimIndex], at + 0.015, 'v')
-        addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--active', at + 0.07, 0.13)
-        revealResultDimAt(dimIndex, attentionBlockResultVector[dimIndex] ?? 0, at + 0.075)
-      }
-      addClassPulse(resultRowRef.current, 'attention-row--active', stageHStart + nEmbd * 0.03, 0.16)
+    const stageEStart = stageDStart + weightedVRows.length * 0.2 + 0.16
+    for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+      const at = stageEStart + dimIndex * 0.05
+      spawnTransfer(outputCellRefs.current[dimIndex], headOutputCellRefs.current[0]?.[dimIndex], at, 'o')
+      addClassPulse(outputCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.01, 0.12)
+      addClassPulse(headOutputCellRefs.current[0]?.[dimIndex], 'attention-cell--active', at + 0.06, 0.14)
+      revealHeadOutputCellAt(0, dimIndex, at + 0.064)
     }
+    addClassPulse(headOutputRowRefs.current[0], 'attention-row--active', stageEStart + headDim * 0.05, 0.16)
+
+    const stageFStart = stageEStart + headDim * 0.05 + 0.16
+    for (let headIdx = 1; headIdx < nHead; headIdx += 1) {
+      const rowBase = stageFStart + (headIdx - 1) * 0.23
+      for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+        const at = rowBase + dimIndex * 0.04
+        spawnTransfer(headSummaryQRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at, 'q')
+        spawnTransfer(headSummaryKRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at + 0.01, 'k')
+        spawnTransfer(headSummaryVRefs.current[headIdx], headOutputCellRefs.current[headIdx]?.[dimIndex], at + 0.02, 'v')
+        addClassPulse(headOutputCellRefs.current[headIdx]?.[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
+        revealHeadOutputCellAt(headIdx, dimIndex, at + 0.064)
+      }
+      addClassPulse(headOutputRowRefs.current[headIdx], 'attention-row--active', rowBase + headDim * 0.04, 0.14)
+    }
+
+    const stageGStart = stageFStart + Math.max(0, nHead - 1) * 0.23 + 0.16
+    appendAttentionStickerTimeline({
+      label: 'CONCAT',
+      startAt: stageGStart,
+      duration: nEmbd * 0.024 + 0.14,
+      variant: 'concat',
+      anchor: 'between',
+      fromNode: headsStageRef.current,
+      toNode: mhaStageRef.current,
+    })
+    for (let headIdx = 0; headIdx < nHead; headIdx += 1) {
+      for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
+        const flatIndex = headIdx * headDim + dimIndex
+        const at = stageGStart + flatIndex * 0.024
+        spawnTransfer(headOutputCellRefs.current[headIdx]?.[dimIndex], mhaInputCellRefs.current[flatIndex], at, 'o')
+        addClassPulse(mhaInputCellRefs.current[flatIndex], 'attention-cell--active', at + 0.06, 0.12)
+        revealMhaInputDimAt(flatIndex, at + 0.064)
+      }
+    }
+    addClassPulse(mhaInputRowRef.current, 'attention-row--active', stageGStart + nEmbd * 0.024, 0.14)
+
+    const stageG2Start = stageGStart + nEmbd * 0.024 + 0.12
+    appendAttentionStickerTimeline({
+      label: 'LINEAR',
+      startAt: stageG2Start,
+      duration: nEmbd * 0.028 + 0.14,
+      variant: 'linear',
+      anchor: 'between',
+      fromNode: mhaInputRowRef.current,
+      toNode: mhaOutputRowRef.current,
+    })
+    for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+      const at = stageG2Start + dimIndex * 0.028
+      spawnTransfer(mhaInputCellRefs.current[dimIndex], mhaOutputCellRefs.current[dimIndex], at, 'w')
+      addClassPulse(mhaOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
+      revealMhaOutputDimAt(dimIndex, mhaOutputVector[dimIndex] ?? 0, at + 0.064)
+    }
+    addClassPulse(mhaOutputRowRef.current, 'attention-row--active', stageG2Start + nEmbd * 0.028, 0.14)
+
+    const stageHStart = stageG2Start + nEmbd * 0.028 + 0.14
+    appendAttentionStickerTimeline({
+      label: 'RESIDUAL',
+      startAt: stageHStart,
+      duration: nEmbd * 0.03 + 0.16,
+      variant: 'residual',
+      anchor: 'top-center',
+      targetNode: resultRowRef.current,
+    })
+    for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+      const at = stageHStart + dimIndex * 0.03
+      spawnTransfer(xValueRefs.current[dimIndex], resultCellRefs.current[dimIndex], at, 'q')
+      spawnTransfer(mhaOutputCellRefs.current[dimIndex], resultCellRefs.current[dimIndex], at + 0.015, 'v')
+      addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--active', at + 0.07, 0.13)
+      revealResultDimAt(dimIndex, attentionBlockResultVector[dimIndex] ?? 0, at + 0.075)
+    }
+    addClassPulse(resultRowRef.current, 'attention-row--active', stageHStart + nEmbd * 0.03, 0.16)
 
     return () => {
       timeline.kill()
@@ -2213,7 +2319,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       topPathNode?.setAttribute('d', '')
       resultPathNode?.setAttribute('d', '')
     }
-    if (!containerNode || !isLastQuery) {
+    if (!containerNode) {
       resetPaths()
       return undefined
     }
@@ -2272,7 +2378,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       window.removeEventListener('resize', updatePaths)
       resetPaths()
     }
-  }, [animationTick, isLastQuery, safeQueryIndex])
+  }, [animationTick, safeQueryIndex])
 
   const moveExampleName = (direction) => {
     setExampleNameIndex((prevIndex) => {
@@ -2328,6 +2434,49 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
             >
               {isVisible ? numericValue.toFixed(2) : ATTENTION_HIDDEN_PLACEHOLDER}
             </span>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const renderVectorColumn = (
+    vector,
+    keyPrefix,
+    {
+      dense = false,
+      cellRefFactory = null,
+      visibleMask = null,
+      hiddenClassName = '',
+    } = {},
+  ) => {
+    return (
+      <div className={`attention-vector-column ${dense ? 'attention-vector-column--dense16' : ''}`.trim()}>
+        {vector.map((value, dimIndex) => {
+          const numericValue = Number(value ?? 0)
+          const ratio = clamp(Math.abs(numericValue) / maxAbs, 0, 1)
+          const isVisible = !Array.isArray(visibleMask) || Boolean(visibleMask[dimIndex])
+          return (
+            <div
+              key={`${keyPrefix}-${dimIndex}`}
+              className={`attention-vector-line ${dense ? 'attention-vector-line--dense16' : ''}`.trim()}
+            >
+              <span className={`attention-vector-line-dim ${dense ? 'attention-vector-line-dim--dense16' : ''} ${valueTextClass}`.trim()}>
+                {dimIndex}
+              </span>
+              <span
+                ref={cellRefFactory ? cellRefFactory(dimIndex) : undefined}
+                className={`attention-vector-line-value attention-cell ${dense ? 'attention-vector-line-value--dense16' : ''} ${
+                  isVisible ? '' : `attention-value--hidden ${hiddenClassName}`
+                } ${valueTextClass}`.trim()}
+                style={{
+                  backgroundColor: getHeatColor(numericValue, maxAbs),
+                  color: ratio > 0.8 ? '#fff' : '#000',
+                }}
+              >
+                {isVisible ? numericValue.toFixed(2) : ATTENTION_HIDDEN_PLACEHOLDER}
+              </span>
+            </div>
           )
         })}
       </div>
@@ -2654,17 +2803,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
           </div>
 
           <div className="attention-extended-shell">
-            {!isLastQuery ? (
-              <div className="attention-extended-gate">
-                <p className="attention-extended-gate-title">MHA / RESIDUAL 확장</p>
-                <p className="attention-extended-gate-desc">예시 인덱스를 마지막까지 이동하면 아래 계산이 활성화됩니다.</p>
-                <div className="attention-extended-skeleton-row" />
-                <div className="attention-extended-skeleton-row" />
-                <div className="attention-extended-skeleton-row" />
-              </div>
-            ) : (
-              <div className="attention-extended-grid">
-                <section className="attention-extended-stage">
+            <div className="attention-extended-grid">
+                <section ref={headsStageRef} className="attention-extended-stage">
                   {renderStageHead({
                     key: 'stage-heads',
                     title: 'HEAD 0~3 OUTPUTS',
@@ -2723,7 +2863,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   </div>
                 </section>
 
-                <section className="attention-extended-stage">
+                <section ref={mhaStageRef} className="attention-extended-stage">
                   {renderStageHead({
                     key: 'stage-mha',
                     title: 'MHA OUTPUT',
@@ -2731,26 +2871,28 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                     infoBody: '4개 head output을 concat한 x_attn(16차원)에 W_O를 곱해 multi-head attention output을 만듭니다.',
                   })}
                   <div className="attention-stage-body">
-                    <article ref={mhaInputRowRef} className="attention-row">
-                      <p className={`attention-row-label ${valueTextClass}`}>x_attn = concat(head0..3)</p>
-                      {renderVectorCells(xAttnVector, 'mha-input', {
-                        dense: true,
-                        cellRefFactory: (dimIndex) => (node) => {
-                          mhaInputCellRefs.current[dimIndex] = node
-                        },
-                        visibleMask: revealedMhaInputDims,
-                      })}
-                    </article>
-                    <article ref={mhaOutputRowRef} className="attention-row attention-row--output">
-                      <p className={`attention-row-label ${valueTextClass}`}>linear(x_attn, W_O)</p>
-                      {renderVectorCells(displayedMhaOutputVector, 'mha-output', {
-                        dense: true,
-                        cellRefFactory: (dimIndex) => (node) => {
-                          mhaOutputCellRefs.current[dimIndex] = node
-                        },
-                        visibleMask: revealedMhaOutputDims,
-                      })}
-                    </article>
+                    <div className="attention-mha-split">
+                      <article ref={mhaInputRowRef} className="attention-row attention-mha-pane">
+                        <p className={`attention-row-label ${valueTextClass}`}>x_attn = concat(head0..3)</p>
+                        {renderVectorColumn(xAttnVector, 'mha-input-col', {
+                          dense: true,
+                          cellRefFactory: (dimIndex) => (node) => {
+                            mhaInputCellRefs.current[dimIndex] = node
+                          },
+                          visibleMask: revealedMhaInputDims,
+                        })}
+                      </article>
+                      <article ref={mhaOutputRowRef} className="attention-row attention-row--output attention-mha-pane">
+                        <p className={`attention-row-label ${valueTextClass}`}>linear(x_attn, W_O)</p>
+                        {renderVectorColumn(displayedMhaOutputVector, 'mha-output-col', {
+                          dense: true,
+                          cellRefFactory: (dimIndex) => (node) => {
+                            mhaOutputCellRefs.current[dimIndex] = node
+                          },
+                          visibleMask: revealedMhaOutputDims,
+                        })}
+                      </article>
+                    </div>
                   </div>
                 </section>
 
@@ -2764,7 +2906,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   <div className="attention-stage-body">
                     <article ref={resultRowRef} className="attention-row attention-row--output">
                       <p className={`attention-row-label ${valueTextClass}`}>x + linear(x_attn, W_O)</p>
-                      {renderVectorCells(displayedResult, 'attention-block-result', {
+                      {renderVectorColumn(displayedResult, 'attention-block-result-col', {
                         dense: true,
                         cellRefFactory: (dimIndex) => (node) => {
                           resultCellRefs.current[dimIndex] = node
@@ -2775,7 +2917,6 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   </div>
                 </section>
               </div>
-            )}
           </div>
 
           <svg
