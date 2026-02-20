@@ -863,9 +863,10 @@ a {
 .attention-pipeline-track {
   position: relative;
   display: grid;
-  grid-template-columns: 280px 420px 220px 340px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.55fr) minmax(0, 1.25fr) minmax(0, 1.4fr);
   gap: 0.5rem;
-  min-width: 1300px;
+  width: 100%;
+  min-width: 0;
   padding: 0.5rem;
 }
 
@@ -1335,8 +1336,9 @@ a {
   }
 
   .attention-pipeline-track {
-    grid-template-columns: 250px 350px 210px 300px;
-    min-width: 1110px;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.45fr) minmax(0, 1.2fr) minmax(0, 1.35fr);
+    width: 100%;
+    min-width: 0;
   }
 }
 

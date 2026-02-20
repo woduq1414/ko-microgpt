@@ -2124,7 +2124,6 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
             })}
 
             <div className="attention-stage-body">
-              <p className="attention-stage-caption">현재 POS의 16차원 벡터</p>
               <article ref={xVectorRef} className="attention-row attention-row--query">
                 <p className={`attention-row-label ${valueTextClass}`}>{`POS ${safeQueryIndex} · ${queryToken?.label ?? ''}`}</p>
                 <div className="attention-vector-column">
@@ -2282,8 +2281,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
             })}
 
             <div className="attention-stage-body">
-              <p className={`attention-output-step ${valueTextClass}`}>{`누적 단계 ${safeOutputStep} / ${totalSteps}`}</p>
-
+             
               <div className="attention-contrib-list">
                 {weightedVRows.map((row, rowIndex) => (
                   <article
@@ -2541,108 +2539,6 @@ function App() {
   }, [])
 
   useLayoutEffect(() => {
-    const sections = Array.from(document.querySelectorAll('.snap-section'))
-    let wheelLocked = false
-    let unlockTimerId = null
-
-    const syncSectionIndex = () => {
-      const pivotY = window.scrollY + window.innerHeight * 0.45
-      let nearestIndex = 0
-      sections.forEach((section, index) => {
-        if (section.offsetTop <= pivotY) {
-          nearestIndex = index
-        }
-      })
-      return nearestIndex
-    }
-
-    let currentSectionIndex = syncSectionIndex()
-
-    const unlockWheelLater = (delay) => {
-      window.clearTimeout(unlockTimerId)
-      unlockTimerId = window.setTimeout(() => {
-        wheelLocked = false
-      }, delay)
-    }
-
-    const goToSection = (nextIndex) => {
-      if (!sections.length) {
-        return
-      }
-
-      const boundedIndex = Math.max(0, Math.min(sections.length - 1, nextIndex))
-      if (boundedIndex === currentSectionIndex) {
-        return
-      }
-
-      currentSectionIndex = boundedIndex
-      wheelLocked = true
-
-      window.scrollTo({
-        top: sections[boundedIndex].offsetTop,
-        behavior: reducedMotion ? 'auto' : 'smooth',
-      })
-
-      unlockWheelLater(reducedMotion ? 60 : 800)
-    }
-
-    const onWheel = (event) => {
-      if (Math.abs(event.deltaY) < 12) {
-        return
-      }
-
-      event.preventDefault()
-
-      if (wheelLocked) {
-        return
-      }
-
-      const direction = event.deltaY > 0 ? 1 : -1
-      goToSection(currentSectionIndex + direction)
-    }
-
-    const onKeyDown = (event) => {
-      const targetTag = event.target?.tagName ?? ''
-      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
-        return
-      }
-
-      if (wheelLocked) {
-        if (
-          event.key === 'ArrowDown' ||
-          event.key === 'PageDown' ||
-          event.key === 'ArrowUp' ||
-          event.key === 'PageUp' ||
-          event.key === ' '
-        ) {
-          event.preventDefault()
-        }
-        return
-      }
-
-      if (event.key === 'ArrowDown' || event.key === 'PageDown' || (event.key === ' ' && !event.shiftKey)) {
-        event.preventDefault()
-        goToSection(currentSectionIndex + 1)
-        return
-      }
-
-      if (event.key === 'ArrowUp' || event.key === 'PageUp' || (event.key === ' ' && event.shiftKey)) {
-        event.preventDefault()
-        goToSection(currentSectionIndex - 1)
-      }
-    }
-
-    const onScroll = () => {
-      if (wheelLocked) {
-        return
-      }
-      currentSectionIndex = syncSectionIndex()
-    }
-
-    window.addEventListener('wheel', onWheel, { passive: false })
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('scroll', onScroll, { passive: true })
-
     let ctx = null
     if (!reducedMotion) {
       ctx = gsap.context(() => {
@@ -2686,10 +2582,6 @@ function App() {
     }
 
     return () => {
-      window.removeEventListener('wheel', onWheel)
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('scroll', onScroll)
-      window.clearTimeout(unlockTimerId)
       ctx?.revert()
     }
   }, [reducedMotion])
