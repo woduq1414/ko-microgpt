@@ -1350,6 +1350,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const attnWk = attention?.attn_wk ?? []
   const attnWv = attention?.attn_wv ?? []
   const attnWo = attention?.attn_wo ?? []
+  const mlpFc1 = snapshot?.mlp?.mlp_fc1 ?? []
+  const mlpFc2 = snapshot?.mlp?.mlp_fc2 ?? []
+  const lmHead = snapshot?.lm_head ?? []
   const wte = snapshot?.wte ?? []
   const wpe = snapshot?.wpe ?? []
   const [exampleNameIndex, setExampleNameIndex] = useState(0)
@@ -1369,10 +1372,16 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const [revealedMhaInputDims, setRevealedMhaInputDims] = useState([])
   const [revealedMhaOutputDims, setRevealedMhaOutputDims] = useState([])
   const [revealedResultDims, setRevealedResultDims] = useState([])
+  const [revealedBlockOutputDims, setRevealedBlockOutputDims] = useState([])
+  const [revealedLogitRows, setRevealedLogitRows] = useState([])
+  const [revealedProbRows, setRevealedProbRows] = useState([])
   const [displayedWeights, setDisplayedWeights] = useState([])
   const [displayedOutput, setDisplayedOutput] = useState([])
   const [displayedMhaOutput, setDisplayedMhaOutput] = useState([])
   const [displayedResultVector, setDisplayedResultVector] = useState([])
+  const [displayedBlockOutputVector, setDisplayedBlockOutputVector] = useState([])
+  const [displayedLogits, setDisplayedLogits] = useState([])
+  const [displayedProbs, setDisplayedProbs] = useState([])
   const pipelineContentRef = useRef(null)
   const bridgeLayerRef = useRef(null)
   const bridgeTopPathRef = useRef(null)
@@ -1405,6 +1414,15 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const mhaOutputCellRefs = useRef([])
   const resultRowRef = useRef(null)
   const resultCellRefs = useRef([])
+  const blockOutputStageRef = useRef(null)
+  const blockOutputRowRef = useRef(null)
+  const blockOutputCellRefs = useRef([])
+  const logitStageRef = useRef(null)
+  const logitRowRefs = useRef([])
+  const logitValueRefs = useRef([])
+  const probStageRef = useRef(null)
+  const probRowRefs = useRef([])
+  const probValueRefs = useRef([])
   const timelineRef = useRef(null)
   const currentExampleName = CHAPTER_FOUR_EXAMPLE_NAMES[exampleNameIndex]
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
@@ -1423,7 +1441,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     Array.isArray(attnWq[0]) &&
     Array.isArray(attnWk[0]) &&
     Array.isArray(attnWv[0]) &&
-    Array.isArray(attnWo[0])
+    Array.isArray(attnWo[0]) &&
+    Array.isArray(mlpFc1) &&
+    Array.isArray(mlpFc2) &&
+    Array.isArray(lmHead) &&
+    Array.isArray(mlpFc1[0]) &&
+    Array.isArray(mlpFc2[0]) &&
+    Array.isArray(lmHead[0])
 
   const stoi = useMemo(() => {
     return Object.fromEntries(tokenChars.map((char, index) => [char, index]))
@@ -1617,12 +1641,88 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const attentionBlockResultVector = currentXVector.map((value, dimIndex) => {
     return Number(value ?? 0) + Number(mhaOutputVector[dimIndex] ?? 0)
   })
+  const xResidualVector = attentionBlockResultVector
+  const xNormVector = rmsNormVector(xResidualVector)
+  const mlpHiddenVector = mlpFc1.length ? matVec(xNormVector, mlpFc1) : Array.from({ length: nEmbd * 4 }, () => 0)
+  const mlpReluVector = mlpHiddenVector.map((value) => Math.max(0, Number(value ?? 0)))
+  const mlpLinearVector = mlpFc2.length ? matVec(mlpReluVector, mlpFc2) : Array.from({ length: nEmbd }, () => 0)
+  const transformerBlockOutputVector = xResidualVector.map((value, dimIndex) => {
+    return Number(value ?? 0) + Number(mlpLinearVector[dimIndex] ?? 0)
+  })
+  const logitsVector = lmHead.length ? matVec(transformerBlockOutputVector, lmHead) : []
+  const probVector = softmaxNumbers(logitsVector)
+  const vocabularyRows = logitsVector.map((value, tokenId) => {
+    if (tokenId === bos) {
+      return {
+        tokenId,
+        label: '[BOS]',
+        logit: Number(value ?? 0),
+        prob: Number(probVector[tokenId] ?? 0),
+      }
+    }
+    const tokenChar = tokenChars[tokenId] ?? ''
+    if (!tokenChar) {
+      return {
+        tokenId,
+        label: `ID ${tokenId}`,
+        logit: Number(value ?? 0),
+        prob: Number(probVector[tokenId] ?? 0),
+      }
+    }
+    const jamoInfo = getJamoInfoForChapter3(tokenChar)
+    return {
+      tokenId,
+      label: jamoInfo.display || tokenChar,
+      logit: Number(value ?? 0),
+      prob: Number(probVector[tokenId] ?? 0),
+    }
+  })
+  const topTokenRows = [...vocabularyRows]
+    .sort((left, right) => right.prob - left.prob || left.tokenId - right.tokenId)
+    .slice(0, Math.min(10, vocabularyRows.length))
+  const topTokenIdSet = new Set(topTokenRows.map((row) => row.tokenId))
+  const bottomTokenRows = [...vocabularyRows]
+    .filter((row) => !topTokenIdSet.has(row.tokenId))
+    .sort((left, right) => left.prob - right.prob || left.tokenId - right.tokenId)
+    .slice(0, Math.min(2, Math.max(0, vocabularyRows.length - topTokenRows.length)))
+  const selectedTokenRows = [...topTokenRows, ...bottomTokenRows]
+  const shouldRenderTokenEllipsis = bottomTokenRows.length > 0 && topTokenRows.length + bottomTokenRows.length < vocabularyRows.length
+  const tokenDisplayRows = [
+    ...topTokenRows.map((row, selectedIndex) => ({ ...row, selectedIndex, isEllipsis: false })),
+    ...(shouldRenderTokenEllipsis ? [{ isEllipsis: true, key: 'ellipsis' }] : []),
+    ...bottomTokenRows.map((row, bottomIndex) => ({
+      ...row,
+      selectedIndex: topTokenRows.length + bottomIndex,
+      isEllipsis: false,
+    })),
+  ]
+  const partialLogitsForSelectedRows = selectedTokenRows.map((row) => {
+    const lmHeadRow = lmHead[row.tokenId] ?? []
+    let runningDot = 0
+    return Array.from({ length: nEmbd }, (_, dimIndex) => {
+      runningDot += Number(transformerBlockOutputVector[dimIndex] ?? 0) * Number(lmHeadRow[dimIndex] ?? 0)
+      return runningDot
+    })
+  })
 
   const totalSteps = weightedVRows.length
   const safeOutputStep = clamp(outputStep, 0, totalSteps)
   const displayedOutputVector = displayedOutput.length === headDim ? displayedOutput : Array.from({ length: headDim }, () => 0)
   const displayedMhaOutputVector = displayedMhaOutput.length === nEmbd ? displayedMhaOutput : Array.from({ length: nEmbd }, () => 0)
   const displayedResult = displayedResultVector.length === nEmbd ? displayedResultVector : Array.from({ length: nEmbd }, () => 0)
+  const displayedBlockOutput =
+    displayedBlockOutputVector.length === nEmbd ? displayedBlockOutputVector : Array.from({ length: nEmbd }, () => 0)
+  const displayedLogitValues =
+    displayedLogits.length === selectedTokenRows.length
+      ? displayedLogits
+      : Array.from({ length: selectedTokenRows.length }, () => 0)
+  const displayedProbValues =
+    displayedProbs.length === selectedTokenRows.length ? displayedProbs : Array.from({ length: selectedTokenRows.length }, () => 0)
+  const logitAbsMax = Math.max(
+    1e-8,
+    ...selectedTokenRows.map((row) => Math.abs(Number(row.logit ?? 0))),
+    ...displayedLogitValues.map((value) => Math.abs(Number(value ?? 0))),
+  )
 
   const maxAbs = Math.max(
     1e-8,
@@ -1637,9 +1737,12 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     ...xAttnVector.map((value) => Math.abs(value)),
     ...mhaOutputVector.map((value) => Math.abs(value)),
     ...attentionBlockResultVector.map((value) => Math.abs(value)),
+    ...transformerBlockOutputVector.map((value) => Math.abs(value)),
+    ...logitsVector.map((value) => Math.abs(value)),
+    ...probVector.map((value) => Math.abs(value)),
   )
 
-  const animationSignature = `${currentExampleName}-${safeQueryIndex}-${totalSteps}`
+  const animationSignature = `${currentExampleName}-${safeQueryIndex}-${totalSteps}-${selectedTokenRows.length}`
 
   useLayoutEffect(() => {
     const flowLayer = flowLayerRef.current
@@ -1654,6 +1757,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       setDisplayedOutput(Array.from({ length: headDim }, () => 0))
       setDisplayedMhaOutput(Array.from({ length: nEmbd }, () => 0))
       setDisplayedResultVector(Array.from({ length: nEmbd }, () => 0))
+      setDisplayedBlockOutputVector(Array.from({ length: nEmbd }, () => 0))
+      setDisplayedLogits(Array.from({ length: selectedTokenRows.length }, () => 0))
+      setDisplayedProbs(Array.from({ length: selectedTokenRows.length }, () => 0))
       setRevealedXDims(createRevealVector(currentXRows.length))
       setRevealedQDims(createRevealVector(headDim))
       setRevealedKCells(createRevealMatrixWithVisibleRows(keyRows.length, headDim, currentKeyIndex))
@@ -1665,6 +1771,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       setRevealedMhaInputDims(createRevealVector(nEmbd))
       setRevealedMhaOutputDims(createRevealVector(nEmbd))
       setRevealedResultDims(createRevealVector(nEmbd))
+      setRevealedBlockOutputDims(createRevealVector(nEmbd))
+      setRevealedLogitRows(createRevealVector(selectedTokenRows.length))
+      setRevealedProbRows(createRevealVector(selectedTokenRows.length))
     }
 
     const revealVectorIndex = (setter, index) => {
@@ -1726,6 +1835,45 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       })
     }
 
+    const updateDisplayedBlockOutputDim = (dimIndex, value) => {
+      setDisplayedBlockOutputVector((prev) => {
+        const base = Array.isArray(prev) && prev.length === nEmbd ? [...prev] : Array.from({ length: nEmbd }, () => 0)
+        if (dimIndex < 0 || dimIndex >= base.length) {
+          return base
+        }
+        base[dimIndex] = Number(value ?? 0)
+        return base
+      })
+    }
+
+    const updateDisplayedLogitAt = (rowIndex, value) => {
+      setDisplayedLogits((prev) => {
+        const base =
+          Array.isArray(prev) && prev.length === selectedTokenRows.length
+            ? [...prev]
+            : Array.from({ length: selectedTokenRows.length }, () => 0)
+        if (rowIndex < 0 || rowIndex >= base.length) {
+          return base
+        }
+        base[rowIndex] = Number(value ?? 0)
+        return base
+      })
+    }
+
+    const updateDisplayedProbAt = (rowIndex, value) => {
+      setDisplayedProbs((prev) => {
+        const base =
+          Array.isArray(prev) && prev.length === selectedTokenRows.length
+            ? [...prev]
+            : Array.from({ length: selectedTokenRows.length }, () => 0)
+        if (rowIndex < 0 || rowIndex >= base.length) {
+          return base
+        }
+        base[rowIndex] = Number(value ?? 0)
+        return base
+      })
+    }
+
     const updateDisplayedWeightAt = (rowIndex, value) => {
       setDisplayedWeights((prev) => {
         const base =
@@ -1764,6 +1912,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         mhaInputRowRef.current,
         mhaOutputRowRef.current,
         resultRowRef.current,
+        blockOutputRowRef.current,
+        ...logitRowRefs.current,
+        ...probRowRefs.current,
         ...xValueRefs.current,
         ...qCellRefs.current,
         ...cellGridNodes(kCellRefs.current),
@@ -1778,6 +1929,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         ...mhaInputCellRefs.current,
         ...mhaOutputCellRefs.current,
         ...resultCellRefs.current,
+        ...blockOutputCellRefs.current,
+        ...logitValueRefs.current,
+        ...probValueRefs.current,
       ]
         .filter(Boolean)
         .forEach((node) => {
@@ -1813,10 +1967,16 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         setRevealedOutputDims(Array.from({ length: headDim }, () => true))
         setDisplayedMhaOutput(mhaOutputVector)
         setDisplayedResultVector(attentionBlockResultVector)
+        setDisplayedBlockOutputVector(transformerBlockOutputVector)
+        setDisplayedLogits(selectedTokenRows.map((row) => Number(row.logit ?? 0)))
+        setDisplayedProbs(selectedTokenRows.map((row) => Number(row.prob ?? 0)))
         setRevealedHeadOutputCells(Array.from({ length: nHead }, () => Array.from({ length: headDim }, () => true)))
         setRevealedMhaInputDims(Array.from({ length: nEmbd }, () => true))
         setRevealedMhaOutputDims(Array.from({ length: nEmbd }, () => true))
         setRevealedResultDims(Array.from({ length: nEmbd }, () => true))
+        setRevealedBlockOutputDims(Array.from({ length: nEmbd }, () => true))
+        setRevealedLogitRows(Array.from({ length: selectedTokenRows.length }, () => true))
+        setRevealedProbRows(Array.from({ length: selectedTokenRows.length }, () => true))
         setIsAnimating(false)
       },
     })
@@ -1953,6 +2113,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       setDisplayedOutput(Array.from({ length: headDim }, () => 0))
       setDisplayedMhaOutput(Array.from({ length: nEmbd }, () => 0))
       setDisplayedResultVector(Array.from({ length: nEmbd }, () => 0))
+      setDisplayedBlockOutputVector(Array.from({ length: nEmbd }, () => 0))
+      setDisplayedLogits(Array.from({ length: selectedTokenRows.length }, () => 0))
+      setDisplayedProbs(Array.from({ length: selectedTokenRows.length }, () => 0))
     }, null, 0)
 
     const revealXDimAt = (dimIndex, startAt) => {
@@ -2025,6 +2188,27 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       timeline.call(() => {
         revealVectorIndex(setRevealedResultDims, dimIndex)
         updateDisplayedResultDim(dimIndex, value)
+      }, null, startAt)
+    }
+
+    const revealBlockOutputDimAt = (dimIndex, value, startAt) => {
+      timeline.call(() => {
+        revealVectorIndex(setRevealedBlockOutputDims, dimIndex)
+        updateDisplayedBlockOutputDim(dimIndex, value)
+      }, null, startAt)
+    }
+
+    const revealLogitStepAt = (rowIndex, dimIndex, startAt) => {
+      timeline.call(() => {
+        revealVectorIndex(setRevealedLogitRows, rowIndex)
+        updateDisplayedLogitAt(rowIndex, partialLogitsForSelectedRows[rowIndex]?.[dimIndex] ?? Number(selectedTokenRows[rowIndex]?.logit ?? 0))
+      }, null, startAt)
+    }
+
+    const revealProbRowAt = (rowIndex, value, startAt) => {
+      timeline.call(() => {
+        revealVectorIndex(setRevealedProbRows, rowIndex)
+        updateDisplayedProbAt(rowIndex, value)
       }, null, startAt)
     }
 
@@ -2152,6 +2336,66 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         revealResultDimAt(dimIndex, attentionBlockResultVector[dimIndex] ?? 0, at + 0.014)
       }
       addClassPulse(resultRowRef.current, 'attention-row--active', resultStageStart + nEmbd * 0.011, 0.14)
+
+      const mlpStageStart = resultStageStart + nEmbd * 0.011 + 0.06
+      appendAttentionStickerTimeline({
+        label: 'MLP',
+        startAt: mlpStageStart,
+        duration: nEmbd * 0.01 + 0.12,
+        variant: 'mlp',
+        anchor: 'between',
+        fromNode: resultRowRef.current,
+        toNode: blockOutputRowRef.current,
+      })
+      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+        const at = mlpStageStart + dimIndex * 0.01
+        addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--pulse', at, 0.08)
+        addClassPulse(blockOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.008, 0.09)
+        revealBlockOutputDimAt(dimIndex, transformerBlockOutputVector[dimIndex] ?? 0, at + 0.01)
+      }
+      addClassPulse(blockOutputRowRef.current, 'attention-row--active', mlpStageStart + nEmbd * 0.01, 0.13)
+
+      const logitStageStart = mlpStageStart + nEmbd * 0.01 + 0.05
+      appendAttentionStickerTimeline({
+        label: 'LOGIT',
+        startAt: logitStageStart,
+        duration: selectedTokenRows.length * 0.05 + 0.18,
+        variant: 'logit',
+        anchor: 'between',
+        fromNode: blockOutputStageRef.current,
+        toNode: logitStageRef.current,
+      })
+      const reducedLogitRowSpacing = 0.05
+      const reducedLogitDimSpacing = 0.008
+      selectedTokenRows.forEach((_, rowIndex) => {
+        const rowBase = logitStageStart + rowIndex * reducedLogitRowSpacing
+        for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+          const at = rowBase + dimIndex * reducedLogitDimSpacing
+          addClassPulse(blockOutputCellRefs.current[dimIndex], 'attention-cell--pulse', at, 0.07)
+          addClassPulse(logitValueRefs.current[rowIndex], 'attention-weight-value--pulse', at + 0.004, 0.08)
+          revealLogitStepAt(rowIndex, dimIndex, at + 0.006)
+        }
+        addClassPulse(logitRowRefs.current[rowIndex], 'attention-row--active', rowBase + nEmbd * reducedLogitDimSpacing, 0.1)
+      })
+
+      const softmaxStageStart =
+        logitStageStart + selectedTokenRows.length * reducedLogitRowSpacing + nEmbd * reducedLogitDimSpacing + 0.04
+      appendAttentionStickerTimeline({
+        label: 'SOFTMAX',
+        startAt: softmaxStageStart,
+        duration: selectedTokenRows.length * 0.04 + 0.14,
+        variant: 'softmax',
+        anchor: 'between',
+        fromNode: logitStageRef.current,
+        toNode: probStageRef.current,
+      })
+      selectedTokenRows.forEach((row, rowIndex) => {
+        const at = softmaxStageStart + rowIndex * 0.04
+        addClassPulse(logitValueRefs.current[rowIndex], 'attention-weight-value--pulse', at, 0.09)
+        addClassPulse(probValueRefs.current[rowIndex], 'attention-weight-value--pulse', at + 0.005, 0.1)
+        revealProbRowAt(rowIndex, row.prob, at + 0.009)
+        addClassPulse(probRowRefs.current[rowIndex], 'attention-row--active', at + 0.01, 0.1)
+      })
 
       return () => {
         timeline.kill()
@@ -2300,6 +2544,68 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       revealResultDimAt(dimIndex, attentionBlockResultVector[dimIndex] ?? 0, at + 0.075)
     }
     addClassPulse(resultRowRef.current, 'attention-row--active', stageHStart + nEmbd * 0.03, 0.16)
+
+    const stageIStart = stageHStart + nEmbd * 0.03 + 0.16
+    appendAttentionStickerTimeline({
+      label: 'MLP',
+      startAt: stageIStart,
+      duration: nEmbd * 0.028 + 0.14,
+      variant: 'mlp',
+      anchor: 'between',
+      fromNode: resultRowRef.current,
+      toNode: blockOutputRowRef.current,
+    })
+    for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+      const at = stageIStart + dimIndex * 0.028
+      spawnTransfer(resultCellRefs.current[dimIndex], blockOutputCellRefs.current[dimIndex], at, 'v')
+      addClassPulse(resultCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.01, 0.11)
+      addClassPulse(blockOutputCellRefs.current[dimIndex], 'attention-cell--active', at + 0.06, 0.12)
+      revealBlockOutputDimAt(dimIndex, transformerBlockOutputVector[dimIndex] ?? 0, at + 0.064)
+    }
+    addClassPulse(blockOutputRowRef.current, 'attention-row--active', stageIStart + nEmbd * 0.028, 0.14)
+
+    const stageJStart = stageIStart + nEmbd * 0.028 + 0.14
+    appendAttentionStickerTimeline({
+      label: 'LOGIT',
+      startAt: stageJStart,
+      duration: selectedTokenRows.length * 0.2 + 0.2,
+      variant: 'logit',
+      anchor: 'between',
+      fromNode: blockOutputStageRef.current,
+      toNode: logitStageRef.current,
+    })
+    const stageJRowSpacing = 0.2
+    const stageJDimSpacing = 0.022
+    selectedTokenRows.forEach((_, rowIndex) => {
+      const rowBase = stageJStart + rowIndex * stageJRowSpacing
+      for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
+        const at = rowBase + dimIndex * stageJDimSpacing
+        spawnTransfer(blockOutputCellRefs.current[dimIndex], logitValueRefs.current[rowIndex], at, 'w')
+        addClassPulse(blockOutputCellRefs.current[dimIndex], 'attention-cell--pulse', at + 0.005, 0.1)
+        addClassPulse(logitValueRefs.current[rowIndex], 'attention-weight-value--pulse', at + 0.03, 0.11)
+        revealLogitStepAt(rowIndex, dimIndex, at + 0.034)
+      }
+      addClassPulse(logitRowRefs.current[rowIndex], 'attention-row--active', rowBase + nEmbd * stageJDimSpacing, 0.14)
+    })
+
+    const stageKStart = stageJStart + selectedTokenRows.length * stageJRowSpacing + nEmbd * stageJDimSpacing + 0.14
+    appendAttentionStickerTimeline({
+      label: 'SOFTMAX',
+      startAt: stageKStart,
+      duration: selectedTokenRows.length * 0.08 + 0.2,
+      variant: 'softmax',
+      anchor: 'between',
+      fromNode: logitStageRef.current,
+      toNode: probStageRef.current,
+    })
+    selectedTokenRows.forEach((row, rowIndex) => {
+      const at = stageKStart + rowIndex * 0.08
+      spawnTransfer(logitValueRefs.current[rowIndex], probValueRefs.current[rowIndex], at, 'o')
+      addClassPulse(logitValueRefs.current[rowIndex], 'attention-weight-value--pulse', at + 0.01, 0.11)
+      addClassPulse(probValueRefs.current[rowIndex], 'attention-weight-value--pulse', at + 0.06, 0.12)
+      revealProbRowAt(rowIndex, row.prob, at + 0.064)
+      addClassPulse(probRowRefs.current[rowIndex], 'attention-row--active', at + 0.065, 0.13)
+    })
 
     return () => {
       timeline.kill()
@@ -2804,119 +3110,247 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
           <div className="attention-extended-shell">
             <div className="attention-extended-grid">
-                <section ref={headsStageRef} className="attention-extended-stage">
-                  {renderStageHead({
-                    key: 'stage-heads',
-                    title: 'HEAD 0~3 OUTPUTS',
-                    infoTitle: 'Head Outputs',
-                    infoBody: '상단에서 계산한 head0 외에도 head1~3이 존재하며, 4개 head output이 concat되어 MHA 입력(x_attn)이 됩니다.',
-                  })}
-                  <div className="attention-stage-body">
-                    {headOutputRows.map((row, headIdx) => (
-                      <article
-                        key={`head-output-row-${headIdx}`}
-                        ref={(node) => {
-                          headOutputRowRefs.current[headIdx] = node
-                        }}
-                        className={`attention-row ${headIdx === 0 ? 'attention-row--query' : ''}`}
-                      >
-                        <p className={`attention-row-label ${valueTextClass}`}>{`HEAD ${headIdx} OUTPUT`}</p>
-                        {headIdx > 0 ? (
-                          <div className="attention-head-summary">
-                            <span
-                              ref={(node) => {
-                                headSummaryQRefs.current[headIdx] = node
-                              }}
-                              className={`attention-head-summary-node ${valueTextClass}`}
-                            >
-                              Q{headIdx}
-                            </span>
-                            <span
-                              ref={(node) => {
-                                headSummaryKRefs.current[headIdx] = node
-                              }}
-                              className={`attention-head-summary-node ${valueTextClass}`}
-                            >
-                              K{headIdx}
-                            </span>
-                            <span
-                              ref={(node) => {
-                                headSummaryVRefs.current[headIdx] = node
-                              }}
-                              className={`attention-head-summary-node ${valueTextClass}`}
-                            >
-                              V{headIdx}
-                            </span>
-                          </div>
-                        ) : null}
-                        {renderVectorCells(row.vector, `head-output-${headIdx}`, {
-                          cellRefFactory: (dimIndex) => (node) => {
-                            if (!headOutputCellRefs.current[headIdx]) {
-                              headOutputCellRefs.current[headIdx] = []
-                            }
-                            headOutputCellRefs.current[headIdx][dimIndex] = node
-                          },
-                          visibleMask: revealedHeadOutputCells[headIdx] ?? [],
-                        })}
-                      </article>
-                    ))}
-                  </div>
-                </section>
+              <section ref={headsStageRef} className="attention-extended-stage">
+                {renderStageHead({
+                  key: 'stage-heads',
+                  title: 'HEAD 0~3 OUTPUTS',
+                  infoTitle: 'Head Outputs',
+                  infoBody: '상단에서 계산한 head0 외에도 head1~3이 존재하며, 4개 head output이 concat되어 MHA 입력(x_attn)이 됩니다.',
+                })}
+                <div className="attention-stage-body">
+                  {headOutputRows.map((row, headIdx) => (
+                    <article
+                      key={`head-output-row-${headIdx}`}
+                      ref={(node) => {
+                        headOutputRowRefs.current[headIdx] = node
+                      }}
+                      className={`attention-row ${headIdx === 0 ? 'attention-row--query' : ''}`}
+                    >
+                      <p className={`attention-row-label ${valueTextClass}`}>{`HEAD ${headIdx} OUTPUT`}</p>
+                      {headIdx > 0 ? (
+                        <div className="attention-head-summary">
+                          <span
+                            ref={(node) => {
+                              headSummaryQRefs.current[headIdx] = node
+                            }}
+                            className={`attention-head-summary-node ${valueTextClass}`}
+                          >
+                            Q{headIdx}
+                          </span>
+                          <span
+                            ref={(node) => {
+                              headSummaryKRefs.current[headIdx] = node
+                            }}
+                            className={`attention-head-summary-node ${valueTextClass}`}
+                          >
+                            K{headIdx}
+                          </span>
+                          <span
+                            ref={(node) => {
+                              headSummaryVRefs.current[headIdx] = node
+                            }}
+                            className={`attention-head-summary-node ${valueTextClass}`}
+                          >
+                            V{headIdx}
+                          </span>
+                        </div>
+                      ) : null}
+                      {renderVectorCells(row.vector, `head-output-${headIdx}`, {
+                        cellRefFactory: (dimIndex) => (node) => {
+                          if (!headOutputCellRefs.current[headIdx]) {
+                            headOutputCellRefs.current[headIdx] = []
+                          }
+                          headOutputCellRefs.current[headIdx][dimIndex] = node
+                        },
+                        visibleMask: revealedHeadOutputCells[headIdx] ?? [],
+                      })}
+                    </article>
+                  ))}
+                </div>
+              </section>
 
-                <section ref={mhaStageRef} className="attention-extended-stage">
-                  {renderStageHead({
-                    key: 'stage-mha',
-                    title: 'MHA OUTPUT',
-                    infoTitle: 'MHA Output',
-                    infoBody: '4개 head output을 concat한 x_attn(16차원)에 W_O를 곱해 multi-head attention output을 만듭니다.',
-                  })}
-                  <div className="attention-stage-body">
-                    <div className="attention-mha-split">
-                      <article ref={mhaInputRowRef} className="attention-row attention-mha-pane">
-                        <p className={`attention-row-label ${valueTextClass}`}>x_attn = concat(head0..3)</p>
-                        {renderVectorColumn(xAttnVector, 'mha-input-col', {
-                          dense: true,
-                          cellRefFactory: (dimIndex) => (node) => {
-                            mhaInputCellRefs.current[dimIndex] = node
-                          },
-                          visibleMask: revealedMhaInputDims,
-                        })}
-                      </article>
-                      <article ref={mhaOutputRowRef} className="attention-row attention-row--output attention-mha-pane">
-                        <p className={`attention-row-label ${valueTextClass}`}>linear(x_attn, W_O)</p>
-                        {renderVectorColumn(displayedMhaOutputVector, 'mha-output-col', {
-                          dense: true,
-                          cellRefFactory: (dimIndex) => (node) => {
-                            mhaOutputCellRefs.current[dimIndex] = node
-                          },
-                          visibleMask: revealedMhaOutputDims,
-                        })}
-                      </article>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="attention-extended-stage">
-                  {renderStageHead({
-                    key: 'stage-result',
-                    title: 'ATTENTION BLOCK RESULT',
-                    infoTitle: 'Attention Block Result',
-                    infoBody: 'Final Embedding(x)와 MHA Output을 residual로 더한 결과 벡터입니다.',
-                  })}
-                  <div className="attention-stage-body">
-                    <article ref={resultRowRef} className="attention-row attention-row--output">
-                      <p className={`attention-row-label ${valueTextClass}`}>x + linear(x_attn, W_O)</p>
-                      {renderVectorColumn(displayedResult, 'attention-block-result-col', {
+              <section ref={mhaStageRef} className="attention-extended-stage">
+                {renderStageHead({
+                  key: 'stage-mha',
+                  title: 'MHA OUTPUT',
+                  infoTitle: 'MHA Output',
+                  infoBody: '4개 head output을 concat한 x_attn(16차원)에 W_O를 곱해 multi-head attention output을 만듭니다.',
+                })}
+                <div className="attention-stage-body">
+                  <div className="attention-mha-split">
+                    <article ref={mhaInputRowRef} className="attention-row attention-mha-pane">
+                      <p className={`attention-row-label ${valueTextClass}`}>x_attn = concat(head0..3)</p>
+                      {renderVectorColumn(xAttnVector, 'mha-input-col', {
                         dense: true,
                         cellRefFactory: (dimIndex) => (node) => {
-                          resultCellRefs.current[dimIndex] = node
+                          mhaInputCellRefs.current[dimIndex] = node
                         },
-                        visibleMask: revealedResultDims,
+                        visibleMask: revealedMhaInputDims,
+                      })}
+                    </article>
+                    <article ref={mhaOutputRowRef} className="attention-row attention-row--output attention-mha-pane">
+                      <p className={`attention-row-label ${valueTextClass}`}>linear(x_attn, W_O)</p>
+                      {renderVectorColumn(displayedMhaOutputVector, 'mha-output-col', {
+                        dense: true,
+                        cellRefFactory: (dimIndex) => (node) => {
+                          mhaOutputCellRefs.current[dimIndex] = node
+                        },
+                        visibleMask: revealedMhaOutputDims,
                       })}
                     </article>
                   </div>
-                </section>
-              </div>
+                </div>
+              </section>
+
+              <section className="attention-extended-stage">
+                {renderStageHead({
+                  key: 'stage-result',
+                  title: 'ATTENTION BLOCK RESULT',
+                  infoTitle: 'Attention Block Result',
+                  infoBody: 'Final Embedding(x)와 MHA Output을 residual로 더한 결과 벡터입니다.',
+                })}
+                <div className="attention-stage-body">
+                  <article ref={resultRowRef} className="attention-row attention-row--output">
+                    <p className={`attention-row-label ${valueTextClass}`}>x + linear(x_attn, W_O)</p>
+                    {renderVectorColumn(displayedResult, 'attention-block-result-col', {
+                      dense: true,
+                      cellRefFactory: (dimIndex) => (node) => {
+                        resultCellRefs.current[dimIndex] = node
+                      },
+                      visibleMask: revealedResultDims,
+                    })}
+                  </article>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div className="attention-decoder-shell">
+            <div className="attention-decoder-grid">
+              <section ref={blockOutputStageRef} className="attention-decoder-stage">
+                {renderStageHead({
+                  key: 'stage-block-output',
+                  title: 'TRANSFORMER BLOCK OUTPUT (x)',
+                  infoTitle: 'Transformer Block Output',
+                  infoBody: 'Attention Block Result를 입력으로 MLP(rmsnorm→fc1→relu→fc2→residual)를 적용한 최종 블록 출력 벡터입니다.',
+                })}
+                <div className="attention-stage-body">
+                  <article ref={blockOutputRowRef} className="attention-row attention-row--output">
+                    {renderVectorColumn(displayedBlockOutput, 'transformer-block-output-col', {
+                      dense: true,
+                      cellRefFactory: (dimIndex) => (node) => {
+                        blockOutputCellRefs.current[dimIndex] = node
+                      },
+                      visibleMask: revealedBlockOutputDims,
+                    })}
+                  </article>
+                </div>
+              </section>
+
+              <section ref={logitStageRef} className="attention-decoder-stage">
+                {renderStageHead({
+                  key: 'stage-logit',
+                  title: 'LOGIT',
+                  badge: 'TOP10 + BOTTOM2',
+                  infoTitle: 'Logit',
+                  infoBody: 'Transformer Block Output(x)에 lm_head를 곱해 token별 점수(logit)를 계산합니다. 전체 vocab을 계산하고, 여기에는 상위 10개와 하위 2개만 표시합니다.',
+                })}
+                <div className="attention-stage-body">
+                  <div className="attention-token-list">
+                    {tokenDisplayRows.map((row) => {
+                      if (row.isEllipsis) {
+                        return (
+                          <p key={row.key} className={`attention-token-ellipsis ${valueTextClass}`}>
+                            ...
+                          </p>
+                        )
+                      }
+                      const rowIndex = row.selectedIndex
+                      const shownValue = Number(displayedLogitValues[rowIndex] ?? 0)
+                      const isVisible = Boolean(revealedLogitRows[rowIndex])
+                      const ratio = clamp(Math.abs(shownValue) / logitAbsMax, 0, 1)
+                      return (
+                        <article
+                          key={`logit-row-${row.tokenId}`}
+                          ref={(node) => {
+                            logitRowRefs.current[rowIndex] = node
+                          }}
+                          className="attention-token-row attention-row"
+                        >
+                          <span className={`attention-token-meta ${valueTextClass}`}>{`${row.label} · ID ${row.tokenId}`}</span>
+                          <span
+                            ref={(node) => {
+                              logitValueRefs.current[rowIndex] = node
+                            }}
+                            className={`attention-token-value ${
+                              !isVisible ? 'attention-weight-value--hidden' : ''
+                            } ${valueTextClass}`.trim()}
+                            style={{
+                              backgroundColor: getHeatColor(shownValue, logitAbsMax),
+                              color: ratio > 0.8 ? '#fff' : '#000',
+                            }}
+                          >
+                            {isVisible ? shownValue.toFixed(4) : ATTENTION_HIDDEN_PLACEHOLDER}
+                          </span>
+                        </article>
+                      )
+                    })}
+                  </div>
+                </div>
+              </section>
+
+              <section ref={probStageRef} className="attention-decoder-stage">
+                {renderStageHead({
+                  key: 'stage-prob',
+                  title: 'PROB',
+                  badge: 'SOFTMAX(LOGIT)',
+                  infoTitle: 'Probability',
+                  infoBody: 'logit 전체에 softmax를 적용한 확률입니다. 여기에도 상위 10개와 하위 2개만 표시합니다.',
+                })}
+                <div className="attention-stage-body">
+                  <div className="attention-token-list">
+                    {tokenDisplayRows.map((row) => {
+                      if (row.isEllipsis) {
+                        return (
+                          <p key={`${row.key}-prob`} className={`attention-token-ellipsis ${valueTextClass}`}>
+                            ...
+                          </p>
+                        )
+                      }
+                      const rowIndex = row.selectedIndex
+                      const shownValue = Number(displayedProbValues[rowIndex] ?? 0)
+                      const isVisible = Boolean(revealedProbRows[rowIndex])
+                      const useLightText = shownValue >= 0.7
+                      return (
+                        <article
+                          key={`prob-row-${row.tokenId}`}
+                          ref={(node) => {
+                            probRowRefs.current[rowIndex] = node
+                          }}
+                          className="attention-token-row attention-row"
+                        >
+                          <span className={`attention-token-meta ${valueTextClass}`}>{`${row.label} · ID ${row.tokenId}`}</span>
+                          <span
+                            ref={(node) => {
+                              probValueRefs.current[rowIndex] = node
+                            }}
+                            className={`attention-token-value ${
+                              !isVisible ? 'attention-weight-value--hidden' : ''
+                            } ${valueTextClass}`.trim()}
+                            style={{
+                              backgroundColor: getHeatColor(shownValue, 1),
+                              color: useLightText ? '#fff' : '#000',
+                            }}
+                          >
+                            {isVisible ? shownValue.toFixed(6) : ATTENTION_HIDDEN_PLACEHOLDER}
+                          </span>
+                        </article>
+                      )
+                    })}
+                  </div>
+                </div>
+              </section>
+            </div>
           </div>
 
           <svg
@@ -3098,6 +3532,15 @@ function App() {
           throw new Error('invalid embedding snapshot payload')
         }
 
+        const embd = Number(payload?.n_embd ?? 0)
+        const vocabSize = Array.isArray(payload?.wte) ? payload.wte.length : 0
+        const hasMatrixShape = (matrix, rows, cols) => {
+          return (
+            Array.isArray(matrix) &&
+            matrix.length === rows &&
+            matrix.every((row) => Array.isArray(row) && row.length === cols)
+          )
+        }
         const attentionHeadDim = Number(payload?.attention?.head_dim ?? 0)
         const attentionHeadCount = Number(payload?.attention?.n_head ?? 0)
         const isAttentionValid =
@@ -3105,14 +3548,16 @@ function App() {
           Number(payload?.attention?.head_index) >= 0 &&
           attentionHeadDim > 0 &&
           attentionHeadCount > 0 &&
-          Array.isArray(payload?.attention?.attn_wq) &&
-          Array.isArray(payload?.attention?.attn_wk) &&
-          Array.isArray(payload?.attention?.attn_wv) &&
-          Array.isArray(payload?.attention?.attn_wo) &&
-          Array.isArray(payload?.attention?.attn_wq?.[0]) &&
-          Array.isArray(payload?.attention?.attn_wk?.[0]) &&
-          Array.isArray(payload?.attention?.attn_wv?.[0]) &&
-          Array.isArray(payload?.attention?.attn_wo?.[0])
+          hasMatrixShape(payload?.attention?.attn_wq, embd, embd) &&
+          hasMatrixShape(payload?.attention?.attn_wk, embd, embd) &&
+          hasMatrixShape(payload?.attention?.attn_wv, embd, embd) &&
+          hasMatrixShape(payload?.attention?.attn_wo, embd, embd)
+        const isMlpValid =
+          Number(payload?.mlp?.layer_index) >= 0 &&
+          hasMatrixShape(payload?.mlp?.mlp_fc1, embd * 4, embd) &&
+          hasMatrixShape(payload?.mlp?.mlp_fc2, embd, embd * 4)
+        const isLmHeadValid = hasMatrixShape(payload?.lm_head, vocabSize, embd)
+        const isChapterFourSnapshotValid = isAttentionValid && isMlpValid && isLmHeadValid
 
         if (!isActive) {
           return
@@ -3120,13 +3565,13 @@ function App() {
 
         setEmbeddingSnapshot(payload)
         setEmbeddingStatus('ready')
-        if (isAttentionValid) {
+        if (isChapterFourSnapshotValid) {
           setAttentionSnapshot(payload.attention)
           setAttentionStatus('ready')
         } else {
           setAttentionSnapshot(null)
           setAttentionStatus('error')
-          setAttentionError('Attention 스냅샷 로드 실패')
+          setAttentionError('Attention/MLP/lm_head 스냅샷 로드 실패')
         }
       } catch (error) {
         if (!isActive || error.name === 'AbortError') {
@@ -3137,7 +3582,7 @@ function App() {
         setEmbeddingError('임베딩 스냅샷 로드 실패')
         setAttentionSnapshot(null)
         setAttentionStatus('error')
-        setAttentionError('Attention 스냅샷 로드 실패')
+        setAttentionError('Attention/MLP/lm_head 스냅샷 로드 실패')
       }
     }
 

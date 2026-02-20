@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export embedding snapshot JSON for frontend Chapter 3 visualization."""
+"""Export embedding snapshot JSON for frontend Chapter 3/4 visualization."""
 
 from __future__ import annotations
 
@@ -74,6 +74,9 @@ def main() -> None:
     attn_wk = _validate_matrix_shape(state_dict.get("layer0.attn_wk"), n_embd, n_embd, "layer0.attn_wk")
     attn_wv = _validate_matrix_shape(state_dict.get("layer0.attn_wv"), n_embd, n_embd, "layer0.attn_wv")
     attn_wo = _validate_matrix_shape(state_dict.get("layer0.attn_wo"), n_embd, n_embd, "layer0.attn_wo")
+    mlp_fc1 = _validate_matrix_shape(state_dict.get("layer0.mlp_fc1"), 4 * n_embd, n_embd, "layer0.mlp_fc1")
+    mlp_fc2 = _validate_matrix_shape(state_dict.get("layer0.mlp_fc2"), n_embd, 4 * n_embd, "layer0.mlp_fc2")
+    lm_head = _validate_matrix_shape(state_dict.get("lm_head"), len(wte), n_embd, "lm_head")
 
     uchars = tokenizer.get("uchars")
     bos = tokenizer.get("BOS")
@@ -101,6 +104,12 @@ def main() -> None:
             "attn_wv": _to_float_matrix(attn_wv),
             "attn_wo": _to_float_matrix(attn_wo),
         },
+        "mlp": {
+            "layer_index": 0,
+            "mlp_fc1": _to_float_matrix(mlp_fc1),
+            "mlp_fc2": _to_float_matrix(mlp_fc2),
+        },
+        "lm_head": _to_float_matrix(lm_head),
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,6 +128,9 @@ def main() -> None:
                 "wpe_rows": len(snapshot["wpe"]),
                 "n_head": snapshot["attention"]["n_head"],
                 "head_dim": snapshot["attention"]["head_dim"],
+                "mlp_fc1_rows": len(snapshot["mlp"]["mlp_fc1"]),
+                "mlp_fc2_rows": len(snapshot["mlp"]["mlp_fc2"]),
+                "lm_head_rows": len(snapshot["lm_head"]),
             },
             ensure_ascii=False,
         ),
