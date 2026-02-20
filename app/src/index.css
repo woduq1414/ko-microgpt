@@ -1318,12 +1318,10 @@ a {
   width: 100%;
   min-width: 0;
   padding: 0.5rem;
-  z-index: 16;
 }
 
 .attention-extended-shell {
   position: relative;
-  z-index: 16;
   padding: 0 0.5rem;
 }
 
@@ -1343,7 +1341,6 @@ a {
 
 .attention-decoder-shell {
   position: relative;
-  z-index: 16;
   padding: 0 0.5rem 0.5rem;
 }
 
@@ -1771,6 +1768,7 @@ a {
 .attention-help-wrap {
   position: relative;
   flex-shrink: 0;
+  z-index: 60;
 }
 
 .attention-help-btn {
