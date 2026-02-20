@@ -3271,7 +3271,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
           <div className="attention-extended-shell">
             <div className="attention-extended-grid">
-              <section ref={headsStageRef} className="attention-extended-stage">
+              <section ref={headsStageRef} className="attention-extended-stage attention-extended-stage--heads">
                 {renderStageHead({
                   key: 'stage-heads',
                   title: 'HEAD 0~3 OUTPUTS',
@@ -3388,7 +3388,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
           <div className="attention-decoder-shell">
             <div className="attention-decoder-grid">
-              <section ref={blockOutputStageRef} className="attention-decoder-stage">
+              <section ref={blockOutputStageRef} className="attention-decoder-stage attention-decoder-stage--block-output">
                 {renderStageHead({
                   key: 'stage-block-output',
                   title: 'TRANSFORMER BLOCK OUTPUT',

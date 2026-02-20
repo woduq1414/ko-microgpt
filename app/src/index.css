@@ -1344,6 +1344,85 @@ a {
   min-height: 360px;
 }
 
+.attention-extended-stage--heads,
+.attention-decoder-stage--block-output {
+  display: flex;
+  flex-direction: column;
+}
+
+.attention-extended-stage--heads .attention-stage-body,
+.attention-decoder-stage--block-output .attention-stage-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.attention-extended-stage--heads .attention-stage-body {
+  display: grid;
+  grid-template-rows: minmax(0, 0.7fr) repeat(3, minmax(0, 1fr));
+  gap: 0.36rem;
+}
+
+.attention-extended-stage--heads .attention-stage-body > .attention-row {
+  margin-top: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.attention-extended-stage--heads .attention-stage-body > .attention-row > .attention-head-summary,
+.attention-extended-stage--heads .attention-stage-body > .attention-row > .attention-vector-grid {
+  margin-top: 0;
+}
+
+.attention-extended-stage--heads .attention-stage-body > .attention-row > .attention-head-summary + .attention-vector-grid {
+  margin-top: 0.22rem;
+}
+
+.attention-extended-stage--heads .attention-stage-body > .attention-row > :nth-child(2) {
+  margin-top: auto;
+}
+
+.attention-extended-stage--heads .attention-stage-body > .attention-row > :last-child {
+  margin-bottom: auto;
+}
+
+.attention-decoder-stage--block-output .attention-stage-body {
+  display: flex;
+}
+
+.attention-decoder-stage--block-output .attention-stage-body > .attention-row {
+  margin-top: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.attention-decoder-stage--block-output .attention-vector-column {
+  flex: 1;
+  min-height: 0;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.attention-decoder-stage--block-output .attention-vector-line {
+  height: 100%;
+}
+
+.attention-decoder-stage--block-output .attention-vector-line-dim,
+.attention-decoder-stage--block-output .attention-vector-line-value {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+}
+
+.attention-decoder-stage--block-output .attention-vector-line-dim {
+  justify-content: center;
+}
+
+.attention-decoder-stage--block-output .attention-vector-line-value {
+  justify-content: flex-end;
+}
+
 .attention-extended-gate {
   border: 4px solid #000;
   background: #fffdf5;
