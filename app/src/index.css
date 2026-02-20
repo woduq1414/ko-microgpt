@@ -847,8 +847,58 @@ a {
   box-shadow: 0 0 0 0 #000;
 }
 
+.attention-replay-btn:disabled {
+  cursor: not-allowed;
+  background: #f0f0f0;
+  color: #666;
+  box-shadow: 3px 3px 0 0 #000;
+  transform: none;
+}
+
+.attention-replay-btn:disabled:hover,
+.attention-replay-btn:disabled:focus-visible,
+.attention-replay-btn:disabled:active {
+  transform: none;
+  box-shadow: 3px 3px 0 0 #000;
+  outline: none;
+}
+
 .attention-replay-btn--active {
   background: #ffd93d;
+}
+
+.attention-skip-btn {
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 5px 5px 0 0 #000;
+  min-height: 3.1rem;
+  padding: 0 1rem;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+}
+
+.attention-skip-btn:hover,
+.attention-skip-btn:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 7px 7px 0 0 #000;
+  outline: none;
+}
+
+.attention-skip-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.attention-skip-btn--active {
+  background: #ff6b6b;
+  color: #fff;
 }
 
 .attention-pipeline-shell {
@@ -1541,6 +1591,11 @@ a {
   white-space: nowrap;
 }
 
+.attention-token-meta--hidden {
+  color: #707070;
+  letter-spacing: 0.08em;
+}
+
 .attention-token-value {
   display: inline-block;
   min-width: 4.8rem;
@@ -1581,12 +1636,16 @@ a {
   }
 
   .attention-controls {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
     align-items: stretch;
   }
 
   .attention-replay-btn {
     min-width: 8.2rem;
+  }
+
+  .attention-skip-btn {
+    min-width: 12rem;
   }
 }
 
@@ -1651,6 +1710,11 @@ a {
   }
 
   .attention-replay-btn {
+    min-height: 2.8rem;
+    width: 100%;
+  }
+
+  .attention-skip-btn {
     min-height: 2.8rem;
     width: 100%;
   }

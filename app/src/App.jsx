@@ -71,6 +71,7 @@ const EMBEDDING_POSITIVE_STRONG = '#22c55e'
 const EMBEDDING_NEGATIVE_BASE = '#feeaea'
 const EMBEDDING_NEGATIVE_STRONG = '#ef4444'
 const ATTENTION_HIDDEN_PLACEHOLDER = '····'
+const LOGIT_PARTIAL_COMMIT_STEP = 2
 
 const createRevealVector = (length) => Array.from({ length: Math.max(0, Number(length) || 0) }, () => false)
 
@@ -328,7 +329,7 @@ function ChapterOneDataCloud({ names, reducedMotion, isMobile }) {
     return () => ctx.revert()
   }, [isMobile, reducedMotion, visibleNames.length])
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const sectionEl = cloudRef.current?.closest('.chapter-one-section')
     if (!sectionEl || reducedMotion || isMobile) {
       layerRefs.current.forEach((layer) => {
@@ -1360,6 +1361,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const [openInfoKey, setOpenInfoKey] = useState(null)
   const [animationTick, setAnimationTick] = useState(1)
   const [isAnimating, setIsAnimating] = useState(false)
+  const [skipAnimations, setSkipAnimations] = useState(false)
   const [outputStep, setOutputStep] = useState(0)
   const [revealedXDims, setRevealedXDims] = useState([])
   const [revealedQDims, setRevealedQDims] = useState([])
@@ -1748,7 +1750,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
   const animationSignature = `${currentExampleName}-${safeQueryIndex}-${totalSteps}-${selectedTokenRows.length}`
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const flowLayer = flowLayerRef.current
     if (!flowLayer) {
       return undefined
@@ -1778,6 +1780,33 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       setRevealedBlockOutputDims(createRevealVector(nEmbd))
       setRevealedLogitRows(createRevealVector(selectedTokenRows.length))
       setRevealedProbRows(createRevealVector(selectedTokenRows.length))
+    }
+
+    const showFinalStateImmediately = () => {
+      setOutputStep(totalSteps)
+      setDisplayedWeights(weightRows.map((row) => Number(row.value ?? 0)))
+      setDisplayedOutput(attentionOutput)
+      setDisplayedMhaOutput(mhaOutputVector)
+      setDisplayedResultVector(attentionBlockResultVector)
+      setDisplayedBlockOutputVector(transformerBlockOutputVector)
+      setDisplayedLogits(selectedTokenRows.map((row) => Number(row.logit ?? 0)))
+      setDisplayedProbs(selectedTokenRows.map((row) => Number(row.prob ?? 0)))
+      setRevealedXDims(Array.from({ length: currentXRows.length }, () => true))
+      setRevealedQDims(Array.from({ length: headDim }, () => true))
+      setRevealedKCells(Array.from({ length: keyRows.length }, () => Array.from({ length: headDim }, () => true)))
+      setRevealedVCells(Array.from({ length: valueRows.length }, () => Array.from({ length: headDim }, () => true)))
+      setRevealedWeights(Array.from({ length: weightRows.length }, () => true))
+      setRevealedContribCells(
+        Array.from({ length: weightedVRows.length }, () => Array.from({ length: headDim }, () => true)),
+      )
+      setRevealedOutputDims(Array.from({ length: headDim }, () => true))
+      setRevealedHeadOutputCells(Array.from({ length: nHead }, () => Array.from({ length: headDim }, () => true)))
+      setRevealedMhaInputDims(Array.from({ length: nEmbd }, () => true))
+      setRevealedMhaOutputDims(Array.from({ length: nEmbd }, () => true))
+      setRevealedResultDims(Array.from({ length: nEmbd }, () => true))
+      setRevealedBlockOutputDims(Array.from({ length: nEmbd }, () => true))
+      setRevealedLogitRows(Array.from({ length: selectedTokenRows.length }, () => true))
+      setRevealedProbRows(Array.from({ length: selectedTokenRows.length }, () => true))
     }
 
     const revealVectorIndex = (setter, index) => {
@@ -1946,15 +1975,27 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     flowLayer.innerHTML = ''
     clearTempClasses()
     timelineRef.current?.kill()
-    resetRevealState()
 
     if (!hasAttentionData) {
       timelineRef.current = null
       return () => {
+        setIsAnimating(false)
         flowLayer.innerHTML = ''
         clearTempClasses()
       }
     }
+
+    if (skipAnimations) {
+      timelineRef.current = null
+      showFinalStateImmediately()
+      return () => {
+        setIsAnimating(false)
+        flowLayer.innerHTML = ''
+        clearTempClasses()
+      }
+    }
+
+    resetRevealState()
 
     const currentKNode = kRowRefs.current[keyRows.length - 1]
     const currentVNode = vRowRefs.current[valueRows.length - 1]
@@ -1966,22 +2007,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         setIsAnimating(true)
       },
       onComplete: () => {
-        setOutputStep(totalSteps)
-        setDisplayedWeights(weightRows.map((row) => Number(row.value ?? 0)))
-        setDisplayedOutput(attentionOutput)
-        setRevealedOutputDims(Array.from({ length: headDim }, () => true))
-        setDisplayedMhaOutput(mhaOutputVector)
-        setDisplayedResultVector(attentionBlockResultVector)
-        setDisplayedBlockOutputVector(transformerBlockOutputVector)
-        setDisplayedLogits(selectedTokenRows.map((row) => Number(row.logit ?? 0)))
-        setDisplayedProbs(selectedTokenRows.map((row) => Number(row.prob ?? 0)))
-        setRevealedHeadOutputCells(Array.from({ length: nHead }, () => Array.from({ length: headDim }, () => true)))
-        setRevealedMhaInputDims(Array.from({ length: nEmbd }, () => true))
-        setRevealedMhaOutputDims(Array.from({ length: nEmbd }, () => true))
-        setRevealedResultDims(Array.from({ length: nEmbd }, () => true))
-        setRevealedBlockOutputDims(Array.from({ length: nEmbd }, () => true))
-        setRevealedLogitRows(Array.from({ length: selectedTokenRows.length }, () => true))
-        setRevealedProbRows(Array.from({ length: selectedTokenRows.length }, () => true))
+        showFinalStateImmediately()
         setIsAnimating(false)
       },
     })
@@ -2015,10 +2041,26 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       }
       const safeBeamOpacity = Math.max(0.08, Math.min(1, Number(options?.beamOpacity ?? 0.9)))
       const safeDotOpacity = Math.max(0.08, Math.min(1, Number(options?.dotOpacity ?? 1)))
+      const isLightweight = Boolean(options?.lightweight)
       const from = getCenterPoint(fromNode)
       const to = getCenterPoint(toNode)
       const distance = Math.hypot(to.x - from.x, to.y - from.y)
       const angle = (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI
+
+      if (isLightweight) {
+        const beam = document.createElement('span')
+        beam.className = `attention-flow-beam attention-flow-beam--${variant}`
+        beam.style.left = `${from.x}px`
+        beam.style.top = `${from.y}px`
+        beam.style.width = `${distance}px`
+        beam.style.transform = `translateY(-50%) rotate(${angle}deg)`
+        flowLayer.appendChild(beam)
+        createdNodes.push(beam)
+
+        timeline.fromTo(beam, { opacity: 0 }, { opacity: safeBeamOpacity, duration: 0.1, ease: 'none' }, startAt)
+        timeline.to(beam, { opacity: 0, duration: 0.12, ease: 'none' }, startAt + 0.1)
+        return
+      }
 
       const beam = document.createElement('span')
       beam.className = `attention-flow-beam attention-flow-beam--${variant}`
@@ -2214,7 +2256,16 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     const revealLogitStepAt = (rowIndex, dimIndex, startAt) => {
       timeline.call(() => {
         revealVectorIndex(setRevealedLogitRows, rowIndex)
-        updateDisplayedLogitAt(rowIndex, partialLogitsForSelectedRows[rowIndex]?.[dimIndex] ?? Number(selectedTokenRows[rowIndex]?.logit ?? 0))
+        const shouldCommitStep =
+          dimIndex === nEmbd - 1 ||
+          (LOGIT_PARTIAL_COMMIT_STEP > 0 && (dimIndex + 1) % LOGIT_PARTIAL_COMMIT_STEP === 0)
+        if (!shouldCommitStep) {
+          return
+        }
+        updateDisplayedLogitAt(
+          rowIndex,
+          partialLogitsForSelectedRows[rowIndex]?.[dimIndex] ?? Number(selectedTokenRows[rowIndex]?.logit ?? 0),
+        )
       }, null, startAt)
     }
 
@@ -2566,6 +2617,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         spawnTransfer(mhaInputCellRefs.current[sourceDimIndex], mhaOutputCellRefs.current[targetDimIndex], at, 'w', {
           beamOpacity: 0.28,
           dotOpacity: 0.42,
+          lightweight: true,
         })
       }
       revealMhaOutputDimAt(
@@ -2615,6 +2667,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         spawnTransfer(resultCellRefs.current[sourceDimIndex], blockOutputCellRefs.current[targetDimIndex], at, 'v', {
           beamOpacity: 0.26,
           dotOpacity: 0.4,
+          lightweight: true,
         })
       }
       revealBlockOutputDimAt(
@@ -2647,6 +2700,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         spawnTransfer(blockOutputCellRefs.current[dimIndex], logitValueRefs.current[rowIndex], at, 'w', {
           beamOpacity: 0.24,
           dotOpacity: 0.36,
+          lightweight: true,
         })
         revealLogitStepAt(rowIndex, dimIndex, at + 0.034)
       }
@@ -2684,7 +2738,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       flowLayer.innerHTML = ''
       clearTempClasses()
     }
-  }, [animationTick, animationSignature, currentXRows.length, hasAttentionData, headDim, nEmbd, nHead, reducedMotion]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animationTick, animationSignature, currentXRows.length, hasAttentionData, headDim, nEmbd, nHead, reducedMotion, skipAnimations]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     const containerNode = pipelineContentRef.current
@@ -2775,7 +2829,16 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   }
 
   const replayAnimation = () => {
+    if (skipAnimations) {
+      return
+    }
     setOpenInfoKey(null)
+    setAnimationTick((prevTick) => prevTick + 1)
+  }
+
+  const toggleSkipAnimations = () => {
+    setOpenInfoKey(null)
+    setSkipAnimations((prev) => !prev)
     setAnimationTick((prevTick) => prevTick + 1)
   }
 
@@ -2960,8 +3023,20 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
           className={`attention-replay-btn ${isAnimating ? 'attention-replay-btn--active' : ''}`}
           onClick={replayAnimation}
           aria-label="Attention 계산 애니메이션 다시 재생"
+          aria-disabled={skipAnimations}
+          disabled={skipAnimations}
         >
           {isAnimating ? 'PLAYING...' : 'REPLAY'}
+        </button>
+
+        <button
+          type="button"
+          className={`attention-skip-btn ${skipAnimations ? 'attention-skip-btn--active' : ''}`}
+          onClick={toggleSkipAnimations}
+          aria-label="Chapter 4 애니메이션 생략 모드 토글"
+          aria-pressed={skipAnimations}
+        >
+          {`ANIMATION SKIP: ${skipAnimations ? 'ON' : 'OFF'}`}
         </button>
       </div>
 
@@ -3148,9 +3223,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                       className={`attention-row ${rowIndex < safeOutputStep ? 'attention-row--done' : ''}`}
                     >
                       <p className={`attention-row-label ${valueTextClass}`}>
-                        {`POS ${row.position} · w ${
-                          revealedWeights[rowIndex] ? Number(displayedWeights[rowIndex] ?? 0).toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER
-                        }`}
+                        {`POS ${row.position}`}
                       </p>
                       {renderVectorCells(row.vector, `contrib-${row.position}`, {
                         cellRefFactory: (dimIndex) => (node) => {
@@ -3338,6 +3411,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                       const rowIndex = row.selectedIndex
                       const shownValue = Number(displayedLogitValues[rowIndex] ?? 0)
                       const isVisible = Boolean(revealedLogitRows[rowIndex])
+                      const tokenLabel = `${row.label} · ID ${row.tokenId}`
                       const ratio = clamp(Math.abs(shownValue) / logitAbsMax, 0, 1)
                       return (
                         <article
@@ -3347,7 +3421,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           }}
                           className="attention-token-row attention-row"
                         >
-                          <span className={`attention-token-meta ${valueTextClass}`}>{`${row.label} · ID ${row.tokenId}`}</span>
+                          <span
+                            className={`attention-token-meta ${
+                              !isVisible ? 'attention-token-meta--hidden' : ''
+                            } ${valueTextClass}`.trim()}
+                          >
+                            {isVisible ? tokenLabel : ATTENTION_HIDDEN_PLACEHOLDER}
+                          </span>
                           <span
                             ref={(node) => {
                               logitValueRefs.current[rowIndex] = node
@@ -3390,6 +3470,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                       const rowIndex = row.selectedIndex
                       const shownValue = Number(displayedProbValues[rowIndex] ?? 0)
                       const isVisible = Boolean(revealedProbRows[rowIndex])
+                      const tokenLabel = `${row.label} · ID ${row.tokenId}`
                       const useLightText = shownValue >= 0.7
                       return (
                         <article
@@ -3399,7 +3480,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           }}
                           className="attention-token-row attention-row"
                         >
-                          <span className={`attention-token-meta ${valueTextClass}`}>{`${row.label} · ID ${row.tokenId}`}</span>
+                          <span
+                            className={`attention-token-meta ${
+                              !isVisible ? 'attention-token-meta--hidden' : ''
+                            } ${valueTextClass}`.trim()}
+                          >
+                            {isVisible ? tokenLabel : ATTENTION_HIDDEN_PLACEHOLDER}
+                          </span>
                           <span
                             ref={(node) => {
                               probValueRefs.current[rowIndex] = node
