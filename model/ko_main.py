@@ -3,15 +3,16 @@ Train, save, and run inference for Korean-name GPT (Jamo-token based).
 """
 
 import math
-import os
 import pickle
 import random
 import re
 import unicodedata
+from pathlib import Path
 
 
-DATA_PATH = "data/ko_name.txt"
-CHECKPOINT_PATH = "checkpoints/ko_model.pkl"
+BASE_DIR = Path(__file__).resolve().parent
+DATA_PATH = BASE_DIR / "data" / "ko_name.txt"
+CHECKPOINT_PATH = BASE_DIR / "checkpoints" / "ko_model.pkl"
 
 RANDOM_SEED = 42
 NUM_STEPS = 1000
@@ -120,10 +121,11 @@ def rmsnorm(x):
 
 
 def load_dataset(data_path=DATA_PATH):
-    if not os.path.exists(data_path):
-        raise FileNotFoundError(f"Required dataset file not found: {os.path.abspath(data_path)}")
+    data_path = Path(data_path)
+    if not data_path.exists():
+        raise FileNotFoundError(f"Required dataset file not found: {data_path.resolve()}")
 
-    raw_docs = [line.strip() for line in open(data_path, encoding="utf-8") if line.strip()]
+    raw_docs = [line.strip() for line in data_path.open(encoding="utf-8") if line.strip()]
     hangul_docs = [name for name in raw_docs if re.fullmatch(r"[가-힣]+", name)]
 
     print(f"raw docs: {len(raw_docs)}")
@@ -288,6 +290,7 @@ def to_value_state_dict(float_state_dict):
 
 
 def save(path, state_dict, config, tokenizer, dataset_names):
+    path = Path(path)
     checkpoint = {
         "format_version": 1,
         "config": config,
@@ -300,20 +303,19 @@ def save(path, state_dict, config, tokenizer, dataset_names):
         "dataset_names": sorted(dataset_names),
     }
 
-    checkpoint_dir = os.path.dirname(path)
-    if checkpoint_dir:
-        os.makedirs(checkpoint_dir, exist_ok=True)
-    with open(path, "wb") as f:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as f:
         pickle.dump(checkpoint, f)
 
-    print(f"saved checkpoint: {os.path.abspath(path)}")
+    print(f"saved checkpoint: {path.resolve()}")
     return checkpoint
 
 
 def load_checkpoint(path):
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Checkpoint not found: {os.path.abspath(path)}")
-    with open(path, "rb") as f:
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {path.resolve()}")
+    with path.open("rb") as f:
         checkpoint = pickle.load(f)
     for key in ("config", "tokenizer", "state_dict"):
         if key not in checkpoint:
@@ -327,10 +329,10 @@ def inference(checkpoint, num_samples=NUM_SAMPLES, temperature=TEMPERATURE, seed
     if temperature <= 0:
         raise ValueError("temperature must be > 0")
 
-    if isinstance(checkpoint, str):
-        checkpoint_path = checkpoint
+    if isinstance(checkpoint, (str, Path)):
+        checkpoint_path = Path(checkpoint)
         checkpoint = load_checkpoint(checkpoint_path)
-        print(f"loaded checkpoint: {os.path.abspath(checkpoint_path)}")
+        print(f"loaded checkpoint: {checkpoint_path.resolve()}")
 
     config = checkpoint["config"]
     tokenizer = checkpoint["tokenizer"]

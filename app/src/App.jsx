@@ -1186,7 +1186,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
       key: 'position',
       title: 'POSITION EMBEDDING',
       infoTitle: 'Position Embedding',
-      infoBody: '토큰이 시퀀스의 몇 번째인지 알려주는 벡터입니다.',
+      infoBody: "토큰이 시퀀스의 몇 번째인지 알려주는 벡터입니다. 왜 토큰의 위치 정보를 임베딩하는 걸까요? 이는 모델이 시퀀스의 순서를 인식하고, 이전 토큰들의 정보를 참고할 수 있게 도와주기 때문입니다.",
       vector: positionVector,
       rowRef: positionRowRefs,
       columnRef: positionColumnRef,
@@ -1195,7 +1195,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
       key: 'sum',
       title: 'SUM EMBEDDING',
       infoTitle: 'Sum Embedding',
-      infoBody: '토큰 임베딩과 위치 임베딩을 차원별로 더한 중간 입력입니다.',
+      infoBody: "토큰 임베딩과 위치 임베딩을 차원별로 더한 중간 입력입니다. 이 벡터는 토큰과 위치의 정보를 모두 반영한 결과로, 모델이 토큰과 위치를 동시에 고려할 수 있게 해줍니다.",
       vector: sumVector,
       rowRef: sumRowRefs,
       columnRef: sumColumnRef,
@@ -1204,7 +1204,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
       key: 'final',
       title: 'FINAL EMBEDDING',
       infoTitle: 'Final Embedding',
-      infoBody: '합 벡터를 RMSNorm으로 스케일링한 최종 입력입니다. x / sqrt(mean(x^2)+1e-5)',
+      infoBody: "합 벡터를 RMSNorm으로 스케일링한 최종 입력입니다. 이 과정을 통해 벡터의 크기를 1로 만들고, 모델의 학습 안정성을 높이는 역할을 합니다.",
       vector: displayedFinalVector,
       rowRef: finalRowRefs,
       columnRef: finalColumnRef,
@@ -2993,7 +2993,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         </div>
 
         <div className="attention-nav">
-          <p className="attention-nav-title">예시 인덱스 (Query)</p>
+          <p className="attention-nav-title">타겟 인덱스</p>
           <div className="attention-nav-inner">
             <button
               type="button"
@@ -3049,7 +3049,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 title: 'FINAL EMBEDDING (x)',
                 badge: `POS ${safeQueryIndex}`,
                 infoTitle: 'Final Embedding (x)',
-                infoBody: '현재 Query 위치의 Final Embedding 벡터입니다. 여기서 Q를 만들고, 현재 위치의 K/V 생성 애니메이션도 이 x를 기준으로 보여줍니다.',
+                infoBody: '현재 Query 위치의 Final Embedding 벡터입니다. Q, K, V를 만드는 재료가 됩니다.',
               })}
 
               <div className="attention-stage-body">
@@ -3088,7 +3088,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 title: 'Q / K / V',
                 badge: 'HEAD 0',
                 infoTitle: 'Q / K / V',
-                infoBody: 'Q는 현재 위치 x에서 생성합니다. K/V는 causal 범위(0..query)의 값을 표시하며, 이전 위치는 cache 결과를 사용합니다.',
+                infoBody:
+                  'Q는 Query, K는 Key, V는 Value를 나타냅니다. 비유하자면, Q는 궁금증(질문), K는 정보가 저장된 책장(주소), V는 책장의 실제 내용(정보)과 같습니다. 즉, Q를 들고서 여러 책장(K)을 둘러보고, 필요한 내용을(V) 꺼내오는 과정입니다.',
               })}
 
               <div className="attention-stage-body">
@@ -3165,7 +3166,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 key: 'stage-weights',
                 title: 'ATTN WEIGHTS',
                 infoTitle: 'Attention Weights',
-                infoBody: 'Q·K 점수를 softmax한 최종 확률 분포 벡터입니다. 각 POS가 얼마나 반영되는지를 나타냅니다.',
+                infoBody: 'Q·K 점수를 softmax한 확률 분포 벡터입니다. 이 벡터는 각 POS의 K가 Q와 얼마나 연관성이 있는지를 나타냅니다.',
               })}
 
               <div className="attention-stage-body">
@@ -3209,7 +3210,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 title: 'ATTENTION OUTPUT',
                 badge: `step ${safeOutputStep}/${totalSteps}`,
                 infoTitle: 'Attention Output',
-                infoBody: '각 위치의 기여 벡터(weight_t * V_t)를 순서대로 누적합해 최종 output을 만듭니다.',
+                infoBody: '각 POS의 V에 Attention Weight를 곱해 누적한 결과입니다. 이 벡터는 현재 위치에서 과거 위치들의 정보를 종합적으로 반영한 결과입니다.',
               })}
 
               <div className="attention-stage-body">
@@ -3258,7 +3259,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   key: 'stage-heads',
                   title: 'HEAD 0~3 OUTPUTS',
                   infoTitle: 'Head Outputs',
-                  infoBody: '상단에서 계산한 head0 외에도 head1~3이 존재하며, 4개 head output이 concat되어 MHA 입력(x_attn)이 됩니다.',
+                  infoBody: '상단에서 head0에 대한 Attention Output을 구했습니다. 사실, GPT에서는 여러 개의 head를 사용해 보다 다양한 관점에서 정보(Attention Output)를 추출하고자 합니다. 본 예제에서는 4개 head output을 결합(concat)해 Multi-Head Attention 입력(x_attn)을 만듭니다.',
                 })}
                 <div className="attention-stage-body">
                   {headOutputRows.map((row, headIdx) => (
@@ -3315,9 +3316,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
               <section ref={mhaStageRef} className="attention-extended-stage">
                 {renderStageHead({
                   key: 'stage-mha',
-                  title: 'MHA OUTPUT',
-                  infoTitle: 'MHA Output',
-                  infoBody: '4개 head output을 concat한 x_attn(16차원)에 W_O를 곱해 multi-head attention output을 만듭니다.',
+                  title: 'Multi-Head Attention Output',
+                  infoTitle: 'Multi-Head Attention Output',
+                  infoBody: 'x_attn(16차원)에 W_O를 곱해 Multi-Head Attention Output을 만듭니다.',
                 })}
                 <div className="attention-stage-body">
                   <div className="attention-mha-split">
@@ -3350,7 +3351,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   key: 'stage-result',
                   title: 'ATTENTION BLOCK RESULT',
                   infoTitle: 'Attention Block Result',
-                  infoBody: 'Final Embedding(x)와 MHA Output을 residual로 더한 결과 벡터입니다.',
+                  infoBody: 'Final Embedding(x)와 Multi-Head Attention Output을 더한 결과 벡터입니다. 이와 같이 이전 데이터를 잔차 연결(residual connection)을 통해 더해주면 모델의 학습 안정성을 높일 수 있어요.',
                 })}
                 <div className="attention-stage-body">
                   <article ref={resultRowRef} className="attention-row attention-row--output">
@@ -3375,7 +3376,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   key: 'stage-block-output',
                   title: 'TRANSFORMER BLOCK OUTPUT',
                   infoTitle: 'Transformer Block Output',
-                  infoBody: 'Attention Block Result를 입력으로 MLP(rmsnorm→fc1→relu→fc2→residual)를 적용한 최종 블록 출력 벡터입니다.',
+                  infoBody: 'Attention Block Result를 입력으로 MLP(Multi Layer Perceptron : rmsnorm → fc1 → relu → fc2 → residual)를 적용한 트랜스포머 블럭의 최종 출력 벡터입니다.',
                 })}
                 <div className="attention-stage-body">
                   <article ref={blockOutputRowRef} className="attention-row attention-row--output">
@@ -3396,7 +3397,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   title: 'LOGIT',
                   badge: 'TOP10 + BOTTOM2',
                   infoTitle: 'Logit',
-                  infoBody: 'Transformer Block Output(x)에 lm_head를 곱해 token별 점수(logit)를 계산합니다. 전체 vocab을 계산하고, 여기에는 상위 10개와 하위 2개만 표시합니다.',
+                  infoBody: 'Transformer Block Output에 선형 변환을 적용해 토큰 별 점수(높을수록 다음 토큰이 될 확률이 높음)를 계산합니다. 전체 vocab에 대해 계산하고, 여기에는 상위 10개와 하위 2개만 표시합니다.',
                 })}
                 <div className="attention-stage-body">
                   <div className="attention-token-list">
@@ -3455,7 +3456,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   title: 'NEXT TOKEN PROB',
                   badge: 'SOFTMAX(LOGIT)',
                   infoTitle: 'Next Token Probability',
-                  infoBody: 'logit 전체에 softmax를 적용한 확률입니다. 여기에도 상위 10개와 하위 2개만 표시합니다.',
+                  infoBody: 'logit 전체에 softmax를 적용해 다음 토큰이 나올 확률 분포를 만든 결과입니다.',
                 })}
                 <div className="attention-stage-body">
                   <div className="attention-token-list">
@@ -3576,7 +3577,7 @@ const lessonSections = [
     label: 'CHAPTER 04',
     title: 'ATTENTION',
     description:
-      '선택한 예시 단어와 인덱스를 기준으로 Final Embedding(x)에서 Q, K, V를 만들고, softmax(QK^T/sqrt(d)) * V로 Attention Output이 계산되는 과정을 시각화합니다.',
+      '선택한 예시 단어와 인덱스를 기준으로 Final Embedding(x)에서 Q, K, V를 만들어 Attention Output을 계산하고, 최종적으로 다음 토큰으로 어떤 토큰이 나올 지 확률을 계산합니다.',
     points: [
       'Query 위치를 고르면 해당 위치의 Q를 기준으로 과거 토큰들과의 유사도를 계산해요.',
       'K는 정보의 주소, V는 실제로 가져올 내용을 나타내요.',

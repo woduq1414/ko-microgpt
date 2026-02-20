@@ -32,8 +32,9 @@ def _validate_matrix_shape(matrix: Any, expected_rows: int, expected_cols: int, 
 
 
 def main() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
-    checkpoint_path = repo_root / "checkpoints" / "ko_model.pkl"
+    model_root = Path(__file__).resolve().parents[1]
+    repo_root = model_root.parent
+    checkpoint_path = model_root / "checkpoints" / "ko_model.pkl"
     output_path = repo_root / "app" / "public" / "data" / "ko_embedding_snapshot.json"
 
     if not checkpoint_path.exists():
