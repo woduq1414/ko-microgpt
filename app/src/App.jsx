@@ -6,6 +6,7 @@ import ChapterOneSection from './components/sections/ChapterOneSection'
 import ChapterTwoSection from './components/sections/ChapterTwoSection'
 import ChapterThreeSection from './components/sections/ChapterThreeSection'
 import ChapterFourSection from './components/sections/ChapterFourSection'
+import ChapterFiveSection from './components/sections/ChapterFiveSection'
 import FooterSection from './components/sections/FooterSection'
 
 gsap.registerPlugin(ScrollTrigger)
@@ -201,6 +202,22 @@ const getJamoInfoForChapter3 = (nfdChar) => {
     }
   }
   return { display: nfdChar, role: '기타' }
+}
+
+const getVocabularyTokenLabel = (tokenId, tokenChars, bos) => {
+  if (tokenId === bos) {
+    return '[BOS]'
+  }
+  const tokenChar = tokenChars[tokenId] ?? ''
+  if (!tokenChar) {
+    return `ID ${tokenId}`
+  }
+
+  const jamoInfo = getJamoInfoForChapter3(tokenChar)
+  if (jamoInfo.role && jamoInfo.role !== '기타') {
+    return `${jamoInfo.role} ${jamoInfo.display || tokenChar}`
+  }
+  return jamoInfo.display || tokenChar
 }
 
 const softmaxNumbers = (values) => {
@@ -2967,13 +2984,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     <div className={`attention-demo-wrap reveal ${reducedMotion ? 'attention-demo-wrap--static' : ''}`}>
       <div className="attention-controls">
         <div className="attention-nav">
-          <p className="attention-nav-title">예시 단어</p>
+          <p className="attention-nav-title">예시 이름</p>
           <div className="attention-nav-inner">
             <button
               type="button"
               className="attention-nav-arrow"
               onClick={() => moveExampleName(-1)}
-              aria-label="이전 예시 단어"
+              aria-label="이전 예시 이름"
             >
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
             </button>
@@ -2985,7 +3002,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
               type="button"
               className="attention-nav-arrow"
               onClick={() => moveExampleName(1)}
-              aria-label="다음 예시 단어"
+              aria-label="다음 예시 이름"
             >
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-right" />
             </button>
@@ -3529,6 +3546,549 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   )
 }
 
+function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
+  const tokenChars = useMemo(() => snapshot?.tokenizer?.uchars ?? [], [snapshot])
+  const bos = Number(snapshot?.tokenizer?.bos ?? -1)
+  const nEmbd = Number(snapshot?.n_embd ?? 0)
+  const blockSize = Number(snapshot?.block_size ?? 0)
+  const attention = snapshot?.attention
+  const nHead = Number(attention?.n_head ?? 0)
+  const headDim = Number(attention?.head_dim ?? 0)
+  const attnWq = attention?.attn_wq
+  const attnWk = attention?.attn_wk
+  const attnWv = attention?.attn_wv
+  const attnWo = attention?.attn_wo
+  const wte = snapshot?.wte
+  const wpe = snapshot?.wpe
+  const mlpFc1 = snapshot?.mlp?.mlp_fc1
+  const mlpFc2 = snapshot?.mlp?.mlp_fc2
+  const lmHead = snapshot?.lm_head
+  const [exampleNameIndex, setExampleNameIndex] = useState(0)
+  const [animationTick, setAnimationTick] = useState(1)
+  const [skipAnimations, setSkipAnimations] = useState(false)
+  const [revealedPosColumns, setRevealedPosColumns] = useState([])
+  const [revealedTargetRows, setRevealedTargetRows] = useState([])
+  const [revealedLossCards, setRevealedLossCards] = useState([])
+  const [isMeanVisible, setIsMeanVisible] = useState(false)
+  const probColumnRefs = useRef([])
+  const targetRowRefs = useRef([])
+  const lossCardRefs = useRef([])
+  const meanCardRef = useRef(null)
+  const timelineRef = useRef(null)
+  const flowLayerRef = useRef(null)
+  const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
+  const currentExampleName = CHAPTER_FOUR_EXAMPLE_NAMES[exampleNameIndex]
+
+  const hasMatrixShape = (matrix, rows, cols) =>
+    Array.isArray(matrix) &&
+    matrix.length === rows &&
+    matrix.every((row) => Array.isArray(row) && row.length === cols)
+
+  const vocabSize = Array.isArray(wte) ? wte.length : 0
+  const isShapeValid =
+    tokenChars.length > 0 &&
+    Number.isFinite(bos) &&
+    bos >= 0 &&
+    nEmbd > 0 &&
+    blockSize > 0 &&
+    nHead > 0 &&
+    headDim > 0 &&
+    nEmbd % nHead === 0 &&
+    hasMatrixShape(wte, vocabSize, nEmbd) &&
+    hasMatrixShape(wpe, blockSize, nEmbd) &&
+    hasMatrixShape(attnWq, nEmbd, nEmbd) &&
+    hasMatrixShape(attnWk, nEmbd, nEmbd) &&
+    hasMatrixShape(attnWv, nEmbd, nEmbd) &&
+    hasMatrixShape(attnWo, nEmbd, nEmbd) &&
+    hasMatrixShape(mlpFc1, nEmbd * 4, nEmbd) &&
+    hasMatrixShape(mlpFc2, nEmbd, nEmbd * 4) &&
+    hasMatrixShape(lmHead, vocabSize, nEmbd)
+
+  const stoi = useMemo(() => {
+    return Object.fromEntries(tokenChars.map((char, index) => [char, index]))
+  }, [tokenChars])
+
+  const modelSequence = useMemo(() => {
+    if (!isShapeValid) {
+      return []
+    }
+
+    const decomposition = decomposeKoreanNameToNfdTokens(currentExampleName)
+    const phonemeTokens = decomposition.tokens.flatMap((token, index) => {
+      const tokenId = stoi[token.nfd]
+      if (typeof tokenId !== 'number') {
+        return []
+      }
+      return [
+        {
+          id: `phoneme-${index}`,
+          tokenId,
+          label: `${token.role} ${token.display}`.trim(),
+          position: index + 1,
+          isBos: false,
+        },
+      ]
+    })
+
+    const sequence = [
+      {
+        id: 'bos',
+        tokenId: bos,
+        label: '[BOS]',
+        position: 0,
+        isBos: true,
+      },
+      ...phonemeTokens,
+      {
+        id: 'bos-end',
+        tokenId: bos,
+        label: '[BOS]',
+        position: phonemeTokens.length + 1,
+        isBos: true,
+      },
+    ]
+
+    return sequence.slice(0, Math.min(blockSize, sequence.length))
+  }, [blockSize, bos, currentExampleName, isShapeValid, stoi])
+
+  const xVectors = useMemo(() => {
+    return modelSequence.map((item) => {
+      const tokenRow = wte[item.tokenId] ?? []
+      const positionRow = wpe[item.position] ?? []
+      const sumVector = Array.from({ length: nEmbd }, (_, index) => {
+        return Number(tokenRow[index] ?? 0) + Number(positionRow[index] ?? 0)
+      })
+      return rmsNormVector(sumVector)
+    })
+  }, [modelSequence, nEmbd, wpe, wte])
+
+  const trainingRows = useMemo(() => {
+    if (!isShapeValid || modelSequence.length < 2) {
+      return []
+    }
+
+    const rows = []
+    const zeroVector = Array.from({ length: nEmbd }, () => 0)
+    for (let queryIndex = 0; queryIndex < modelSequence.length - 1; queryIndex += 1) {
+      const currentXVector = xVectors[queryIndex] ?? zeroVector
+      const queryFullVector = matVec(currentXVector, attnWq)
+      const keyFullRows = xVectors.slice(0, queryIndex + 1).map((vector) => matVec(vector, attnWk))
+      const valueFullRows = xVectors.slice(0, queryIndex + 1).map((vector) => matVec(vector, attnWv))
+
+      const headOutputs = Array.from({ length: nHead }, (_, headIdx) => {
+        const queryHead = sliceHead(queryFullVector, headIdx, headDim)
+        const keySlices = keyFullRows.map((row) => sliceHead(row, headIdx, headDim))
+        const valueSlices = valueFullRows.map((row) => sliceHead(row, headIdx, headDim))
+        const logits = keySlices.map((row) => dotProduct(queryHead, row) / Math.sqrt(headDim))
+        const weights = softmaxNumbers(logits)
+        return Array.from({ length: headDim }, (_, dimIndex) => {
+          return valueSlices.reduce((accumulator, row, rowIndex) => {
+            return accumulator + Number(weights[rowIndex] ?? 0) * Number(row[dimIndex] ?? 0)
+          }, 0)
+        })
+      })
+
+      const xAttnVector = headOutputs.flat()
+      const mhaOutputVector = matVec(xAttnVector, attnWo)
+      const residualVector = currentXVector.map((value, dimIndex) => {
+        return Number(value ?? 0) + Number(mhaOutputVector[dimIndex] ?? 0)
+      })
+      const xNormVector = rmsNormVector(residualVector)
+      const mlpHiddenVector = matVec(xNormVector, mlpFc1)
+      const mlpReluVector = mlpHiddenVector.map((value) => Math.max(0, Number(value ?? 0)))
+      const mlpLinearVector = matVec(mlpReluVector, mlpFc2)
+      const blockOutputVector = residualVector.map((value, dimIndex) => {
+        return Number(value ?? 0) + Number(mlpLinearVector[dimIndex] ?? 0)
+      })
+      const logitsVector = matVec(blockOutputVector, lmHead)
+      const probVector = softmaxNumbers(logitsVector)
+
+      const targetToken = modelSequence[queryIndex + 1]
+      const targetTokenId = Number(targetToken?.tokenId ?? -1)
+      if (targetTokenId < 0 || targetTokenId >= probVector.length) {
+        continue
+      }
+
+      const sortedTokenIds = Array.from({ length: probVector.length }, (_, tokenId) => tokenId).sort((left, right) => {
+        const diff = Number(probVector[right] ?? 0) - Number(probVector[left] ?? 0)
+        if (diff !== 0) {
+          return diff
+        }
+        return left - right
+      })
+      const targetRankRaw = sortedTokenIds.indexOf(targetTokenId)
+      const targetRank = targetRankRaw >= 0 ? targetRankRaw : 0
+      const windowSize = Math.min(5, sortedTokenIds.length)
+      const windowStart = Math.max(0, Math.min(targetRank - 2, sortedTokenIds.length - windowSize))
+      const windowEnd = Math.min(sortedTokenIds.length, windowStart + windowSize)
+      const windowTokenIds = sortedTokenIds.slice(windowStart, windowEnd)
+      const targetProb = Number(probVector[targetTokenId] ?? 0)
+
+      rows.push({
+        pos: queryIndex,
+        targetTokenId,
+        targetLabel: getVocabularyTokenLabel(targetTokenId, tokenChars, bos),
+        targetProb,
+        tokenLoss: -Math.log(Math.max(targetProb, 1e-12)),
+        candidateRows: windowTokenIds.map((tokenId, offset) => ({
+          tokenId,
+          label: getVocabularyTokenLabel(tokenId, tokenChars, bos),
+          prob: Number(probVector[tokenId] ?? 0),
+          rank: windowStart + offset,
+          isTarget: tokenId === targetTokenId,
+        })),
+      })
+    }
+
+    return rows
+  }, [
+    attnWo,
+    attnWk,
+    attnWq,
+    attnWv,
+    bos,
+    headDim,
+    isShapeValid,
+    lmHead,
+    mlpFc1,
+    mlpFc2,
+    modelSequence,
+    nEmbd,
+    nHead,
+    tokenChars,
+    xVectors,
+  ])
+
+  const meanLoss = useMemo(() => {
+    if (!trainingRows.length) {
+      return 0
+    }
+    const total = trainingRows.reduce((accumulator, row) => accumulator + Number(row.tokenLoss ?? 0), 0)
+    return total / trainingRows.length
+  }, [trainingRows])
+
+  const sharedGridStyle = useMemo(() => {
+    const columnCount = Math.max(1, trainingRows.length)
+    const style = { '--training-col-count': String(columnCount) }
+    if (!isMobile) {
+      return style
+    }
+    const gapPx = 7
+    const minWidth = columnCount * 160 + Math.max(0, columnCount - 1) * gapPx
+    return {
+      ...style,
+      minWidth: `${minWidth}px`,
+    }
+  }, [isMobile, trainingRows.length])
+
+  useLayoutEffect(() => {
+    const positionCount = trainingRows.length
+    const flowLayer = flowLayerRef.current
+    const createdFlowNodes = []
+
+    const clearPulseClasses = () => {
+      probColumnRefs.current.forEach((node) => node?.classList.remove('training-prob-col--active'))
+      targetRowRefs.current.forEach((node) => node?.classList.remove('training-prob-row--pulse'))
+      lossCardRefs.current.forEach((node) => node?.classList.remove('training-loss-card--pulse'))
+      meanCardRef.current?.classList.remove('training-mean-card--pulse')
+    }
+    const clearFlowLayer = () => {
+      if (flowLayer) {
+        flowLayer.innerHTML = ''
+      }
+    }
+
+    timelineRef.current?.kill()
+    timelineRef.current = null
+    clearPulseClasses()
+    clearFlowLayer()
+
+    if (!positionCount) {
+      return () => {
+        clearPulseClasses()
+        clearFlowLayer()
+      }
+    }
+
+    const revealAt = (setter, index) => {
+      setter((prev) => {
+        const previous = Array.isArray(prev) ? prev : []
+        const resized =
+          previous.length === positionCount ? [...previous] : Array.from({ length: positionCount }, (_, idx) => Boolean(previous[idx]))
+        if (index < 0 || index >= positionCount) {
+          return previous.length === positionCount ? prev : resized
+        }
+        if (resized[index]) {
+          return previous.length === positionCount ? prev : resized
+        }
+        resized[index] = true
+        return resized
+      })
+    }
+
+    if (reducedMotion || skipAnimations) {
+      const rafId = window.requestAnimationFrame(() => {
+        setRevealedPosColumns(Array.from({ length: positionCount }, () => true))
+        setRevealedTargetRows(Array.from({ length: positionCount }, () => true))
+        setRevealedLossCards(Array.from({ length: positionCount }, () => true))
+        setIsMeanVisible(true)
+      })
+      return () => {
+        window.cancelAnimationFrame(rafId)
+        clearPulseClasses()
+        clearFlowLayer()
+      }
+    }
+
+    const timeline = gsap.timeline()
+    timelineRef.current = timeline
+
+    const spawnConnector = (fromNode, toNode, startAt, variant = 'loss') => {
+      if (!flowLayer || !fromNode || !toNode) {
+        return
+      }
+
+      const flowRect = flowLayer.getBoundingClientRect()
+      const fromRect = fromNode.getBoundingClientRect()
+      const toRect = toNode.getBoundingClientRect()
+      const fromX = fromRect.left + fromRect.width * 0.86 - flowRect.left
+      const fromY = fromRect.top + fromRect.height * 0.5 - flowRect.top
+      const toX = toRect.left + toRect.width * 0.5 - flowRect.left
+      const toY = toRect.top + toRect.height * 0.5 - flowRect.top
+      const distance = Math.hypot(toX - fromX, toY - fromY)
+      const angle = (Math.atan2(toY - fromY, toX - fromX) * 180) / Math.PI
+
+      const line = document.createElement('span')
+      line.className = `training-flow-line training-flow-line--${variant}`
+      line.style.left = `${fromX}px`
+      line.style.top = `${fromY}px`
+      line.style.width = `${distance}px`
+      line.style.transform = `translateY(-50%) rotate(${angle}deg)`
+      flowLayer.appendChild(line)
+      createdFlowNodes.push(line)
+
+      timeline.fromTo(
+        line,
+        { opacity: 0, scaleX: 0.12 },
+        { opacity: 1, scaleX: 1, duration: 0.12, ease: 'power2.out' },
+        startAt,
+      )
+      timeline.to(line, { opacity: 0, duration: 0.16, ease: 'power2.in' }, startAt + 0.12)
+    }
+
+    trainingRows.forEach((_, rowIndex) => {
+      const at = rowIndex * 0.12
+      timeline.call(() => {
+        revealAt(setRevealedPosColumns, rowIndex)
+        revealAt(setRevealedTargetRows, rowIndex)
+      }, null, at)
+
+      const probColumnNode = probColumnRefs.current[rowIndex]
+      if (probColumnNode) {
+        timeline.call(() => probColumnNode.classList.add('training-prob-col--active'), null, at + 0.01)
+        timeline.call(() => probColumnNode.classList.remove('training-prob-col--active'), null, at + 0.2)
+      }
+
+      const targetRowNode = targetRowRefs.current[rowIndex]
+      if (targetRowNode) {
+        timeline.call(() => targetRowNode.classList.add('training-prob-row--pulse'), null, at + 0.03)
+        timeline.call(() => targetRowNode.classList.remove('training-prob-row--pulse'), null, at + 0.22)
+      }
+    })
+
+    const lossStageStart = trainingRows.length * 0.12 + 0.08
+    trainingRows.forEach((_, rowIndex) => {
+      const at = lossStageStart + rowIndex * 0.08
+      timeline.call(() => {
+        revealAt(setRevealedLossCards, rowIndex)
+      }, null, at)
+
+      const lossCardNode = lossCardRefs.current[rowIndex]
+      if (lossCardNode) {
+        spawnConnector(targetRowRefs.current[rowIndex], lossCardNode, at + 0.005, 'loss')
+        timeline.call(() => lossCardNode.classList.add('training-loss-card--pulse'), null, at + 0.01)
+        timeline.call(() => lossCardNode.classList.remove('training-loss-card--pulse'), null, at + 0.18)
+      }
+    })
+
+    const meanStageStart = lossStageStart + trainingRows.length * 0.08 + 0.08
+    timeline.call(() => {
+      setIsMeanVisible(true)
+    }, null, meanStageStart)
+
+    trainingRows.forEach((_, rowIndex) => {
+      const at = meanStageStart + 0.02 + rowIndex * 0.045
+      spawnConnector(lossCardRefs.current[rowIndex], meanCardRef.current, at, 'mean')
+    })
+
+    if (meanCardRef.current) {
+      const pulseStart = meanStageStart + trainingRows.length * 0.045 + 0.04
+      timeline.call(() => meanCardRef.current?.classList.add('training-mean-card--pulse'), null, pulseStart)
+      timeline.call(() => meanCardRef.current?.classList.remove('training-mean-card--pulse'), null, pulseStart + 0.2)
+    }
+
+    return () => {
+      timeline.kill()
+      timelineRef.current = null
+      createdFlowNodes.forEach((node) => node.remove())
+      clearPulseClasses()
+      clearFlowLayer()
+    }
+  }, [animationTick, reducedMotion, skipAnimations, trainingRows])
+
+  if (!isShapeValid) {
+    return null
+  }
+
+  if (!trainingRows.length) {
+    return (
+      <div className="token-state-card reveal">
+        <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING DEMO</p>
+        <p className="mt-3 text-lg font-bold">학습 시퀀스를 만들 수 없어 표시할 데이터가 없습니다.</p>
+      </div>
+    )
+  }
+
+  const moveExampleName = (direction) => {
+    setRevealedPosColumns(createRevealVector(trainingRows.length))
+    setRevealedTargetRows(createRevealVector(trainingRows.length))
+    setRevealedLossCards(createRevealVector(trainingRows.length))
+    setIsMeanVisible(false)
+    setExampleNameIndex((prevIndex) => {
+      return (prevIndex + direction + CHAPTER_FOUR_EXAMPLE_NAMES.length) % CHAPTER_FOUR_EXAMPLE_NAMES.length
+    })
+    setAnimationTick((prevTick) => prevTick + 1)
+  }
+
+  const toggleSkipAnimations = () => {
+    setRevealedPosColumns(createRevealVector(trainingRows.length))
+    setRevealedTargetRows(createRevealVector(trainingRows.length))
+    setRevealedLossCards(createRevealVector(trainingRows.length))
+    setIsMeanVisible(false)
+    setSkipAnimations((prev) => !prev)
+    setAnimationTick((prevTick) => prevTick + 1)
+  }
+
+  return (
+    <div className={`training-demo-wrap reveal ${reducedMotion ? 'training-demo-wrap--static' : ''}`}>
+      <div className="training-controls">
+        <div className="training-nav">
+          <p className="training-nav-title">예시 이름</p>
+          <div className="training-nav-inner">
+            <button type="button" className="training-nav-arrow" onClick={() => moveExampleName(-1)} aria-label="이전 예시 이름 보기">
+              <span className="training-nav-arrow-shape training-nav-arrow-shape-left" />
+            </button>
+            <p className="training-nav-pill">
+              <span className="training-nav-pill-char">{currentExampleName}</span>
+              <span className="training-nav-pill-meta">{`POS 0 ~ ${Math.max(0, trainingRows.length - 1)}`}</span>
+            </p>
+            <button type="button" className="training-nav-arrow" onClick={() => moveExampleName(1)} aria-label="다음 예시 이름 보기">
+              <span className="training-nav-arrow-shape training-nav-arrow-shape-right" />
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className={`training-skip-btn ${skipAnimations ? 'training-skip-btn--active' : ''}`}
+          onClick={toggleSkipAnimations}
+          aria-label="Chapter 5 애니메이션 생략 모드 토글"
+          aria-pressed={skipAnimations}
+        >
+          {`ANIMATION SKIP: ${skipAnimations ? 'ON' : 'OFF'}`}
+        </button>
+      </div>
+
+      <div className="training-flow-scope">
+        <section className="training-prob-shell" aria-label="POS별 next token probability">
+          <div className="training-prob-strip" style={sharedGridStyle}>
+            {trainingRows.map((row, rowIndex) => {
+              const isColumnVisible = Boolean(revealedPosColumns[rowIndex])
+              const isTargetVisible = Boolean(revealedTargetRows[rowIndex])
+              return (
+                <article
+                  key={`training-prob-col-${row.pos}`}
+                  ref={(node) => {
+                    probColumnRefs.current[rowIndex] = node
+                  }}
+                  className={`training-prob-col ${isColumnVisible ? '' : 'training-prob-col--hidden'}`.trim()}
+                >
+                  <div className="training-prob-col-head">
+                    <p className={`training-prob-col-pos ${valueTextClass}`}>{`POS ${row.pos}`}</p>
+                    <p className={`training-prob-col-target ${valueTextClass}`}>
+                      {isColumnVisible ? `정답: ${row.targetLabel}` : ATTENTION_HIDDEN_PLACEHOLDER}
+                    </p>
+                  </div>
+                  <div className="training-prob-row-list">
+                    {row.candidateRows.map((candidate) => {
+                      const isTargetRow = candidate.isTarget && isTargetVisible
+                      return (
+                        <div
+                          key={`training-candidate-${row.pos}-${candidate.tokenId}`}
+                          ref={(node) => {
+                            if (candidate.isTarget) {
+                              targetRowRefs.current[rowIndex] = node
+                            }
+                          }}
+                          className={`training-prob-row ${isTargetRow ? 'training-prob-row--target' : ''}`.trim()}
+                        >
+                          <span className={`training-prob-rank ${valueTextClass}`}>
+                            {isColumnVisible ? `#${candidate.rank + 1}` : '#?'}
+                          </span>
+                          <span className={`training-prob-token ${valueTextClass}`}>
+                            {isColumnVisible ? candidate.label : ATTENTION_HIDDEN_PLACEHOLDER}
+                          </span>
+                          <span className={`training-prob-value ${valueTextClass}`}>
+                            {isColumnVisible ? candidate.prob.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="training-loss-shell" aria-label="POS별 token loss">
+          <p className="training-loss-title">TOKEN LOSS = -log(prob)</p>
+          <div className="training-loss-grid" style={sharedGridStyle}>
+            {trainingRows.map((row, rowIndex) => {
+              const isLossVisible = Boolean(revealedLossCards[rowIndex])
+              return (
+                <article
+                  key={`training-loss-${row.pos}`}
+                  ref={(node) => {
+                    lossCardRefs.current[rowIndex] = node
+                  }}
+                  className={`training-loss-card ${isLossVisible ? '' : 'training-loss-card--hidden'}`.trim()}
+                >
+                  <span className={`training-loss-pos ${valueTextClass}`}>{`POS ${row.pos}`}</span>
+                  <span className={`training-loss-value ${valueTextClass}`}>
+                    {isLossVisible ? row.tokenLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                  </span>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+
+        <div ref={flowLayerRef} className="training-flow-layer" aria-hidden="true" />
+      </div>
+
+      <article
+        ref={meanCardRef}
+        className={`training-mean-card ${isMeanVisible ? '' : 'training-mean-card--hidden'}`.trim()}
+        aria-label="평균 loss"
+      >
+        <p className="training-mean-title">MEAN LOSS</p>
+        <p className="training-mean-value">{isMeanVisible ? meanLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}</p>
+      </article>
+    </div>
+  )
+}
+
 const lessonSections = [
   {
     id: 'lesson-1',
@@ -3577,7 +4137,7 @@ const lessonSections = [
     label: 'CHAPTER 04',
     title: 'ATTENTION',
     description:
-      '선택한 예시 단어와 인덱스를 기준으로 Final Embedding(x)에서 Q, K, V를 만들어 Attention Output을 계산하고, 최종적으로 다음 토큰으로 어떤 토큰이 나올 지 확률을 계산합니다.',
+      '선택한 예시 이름와 인덱스를 기준으로 Final Embedding(x)에서 Q, K, V를 만들어 Attention Output을 계산하고, 최종적으로 다음 토큰으로 어떤 토큰이 나올 지 확률을 계산합니다.',
     points: [
       'Query 위치를 고르면 해당 위치의 Q를 기준으로 과거 토큰들과의 유사도를 계산해요.',
       'K는 정보의 주소, V는 실제로 가져올 내용을 나타내요.',
@@ -3585,6 +4145,20 @@ const lessonSections = [
     ],
     takeaway: 'Attention은 현재 위치가 필요한 과거 정보를 선택적으로 모아오는 연산입니다.',
     bgClass: 'bg-neo-muted',
+  },
+  {
+    id: 'lesson-5',
+    label: 'CHAPTER 05',
+    title: 'TRAINING',
+    description:
+      '각 POS에서 정답 토큰이 나올 확률을 통해 최종 손실(loss)을 계산합니다. 이 손실을 줄이는 과정이 모델이 학습하는 과정이고, 내부에서는 손실을 역전파(backpropagation)하여 모델의 파라미터를 업데이트합니다.',
+    points: [
+      'POS 0부터 마지막 음운 예측 POS까지 next token 확률을 순서대로 확인해요.',
+      '각 POS마다 정답 토큰 주변 5개 확률만 세로 리스트로 보여줘요.',
+      '아래에서 POS별 token loss와 평균 loss를 함께 확인해요.',
+    ],
+    takeaway: '학습은 각 POS의 정답 확률을 높이는 방향으로 평균 loss를 줄이는 과정입니다.',
+    bgClass: 'bg-white',
   },
 ]
 
@@ -3804,6 +4378,7 @@ function App() {
   const chapterTwoSection = lessonSections[1]
   const chapterThreeSection = lessonSections[2]
   const chapterFourSection = lessonSections[3]
+  const chapterFiveSection = lessonSections[4]
 
   return (
     <div ref={pageRef} className="relative overflow-x-clip bg-neo-cream font-space text-black">
@@ -3898,6 +4473,26 @@ function App() {
             />
           ) : null}
         </ChapterFourSection>
+
+        <ChapterFiveSection section={chapterFiveSection}>
+          {attentionStatus === 'loading' ? (
+            <div className="token-state-card reveal">
+              <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING SNAPSHOT</p>
+              <p className="mt-3 text-lg font-bold">Training 스냅샷을 불러오는 중...</p>
+            </div>
+          ) : null}
+
+          {attentionStatus === 'error' ? (
+            <div className="token-state-card reveal">
+              <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING SNAPSHOT</p>
+              <p className="mt-3 text-lg font-bold">{attentionError || 'Training 스냅샷 로드 실패'}</p>
+            </div>
+          ) : null}
+
+          {attentionStatus === 'ready' && embeddingSnapshot ? (
+            <ChapterFiveTrainingDemo snapshot={embeddingSnapshot} reducedMotion={reducedMotion} isMobile={isMobile} />
+          ) : null}
+        </ChapterFiveSection>
       </main>
 
       <FooterSection />
