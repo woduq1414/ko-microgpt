@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 88" role="img" aria-label="가 favicon">
+  <g transform="rotate(-8 42 42)">
+    <g transform="translate(-5.0 -4.2) scale(1.1)">
+      <rect x="20" y="20" width="60" height="60" fill="#000000" />
+      <rect x="12" y="12" width="60" height="60" fill="#FFD93D" stroke="#000000" stroke-width="4" />
+      <text
+        x="42"
+        y="46"
+        fill="#000000"
+        font-size="42"
+        font-weight="900"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        font-family="'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif"
+      >
+        가
+      </text>
+    </g>
+  </g>
+</svg>
