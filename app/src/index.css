@@ -1493,6 +1493,35 @@ a {
   padding: 0.12rem 0.1rem;
 }
 
+.attention-row-source-summary {
+  margin-top: 0;
+}
+
+.attention-row-source-summary .attention-source-summary-node {
+  border: 2px solid #000;
+  background: #f4f4ff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  padding: 0.11rem 0.18rem;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+}
+
+.attention-source-summary-node {
+  pointer-events: none;
+}
+
+.attention-row-source-summary .attention-source-summary-node.attention-source-summary-node--active {
+  display: inline-flex;
+  margin-top: 0.16rem;
+}
+
 .attention-mha-split {
   margin-top: 0.32rem;
   width: 100%;
@@ -1528,6 +1557,35 @@ a {
   stroke-width: 2.5px;
   stroke-linecap: round;
   stroke-dasharray: 8 7;
+}
+
+.attention-trace-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.attention-trace-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 6px;
+  border: 2px solid #000;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd93d 0%, #ff6b6b 100%);
+  transform-origin: left center;
+  opacity: 0.44;
+  animation: attentionTraceFadeIn 160ms ease-out both;
+}
+
+@keyframes attentionTraceFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.44;
+  }
 }
 
 .attention-flow-layer {
@@ -1935,6 +1993,31 @@ a {
   transform: translate(-1px, -1px);
   box-shadow: 3px 3px 0 0 #000;
   background: #ffd93d !important;
+}
+
+.attention-trace-target {
+  cursor: pointer;
+}
+
+.attention-trace-target:focus-visible {
+  outline: 3px solid #ff6b6b;
+  outline-offset: 2px;
+}
+
+.attention-trace-target--selected {
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px #ff6b6b !important;
+  transform: translate(-1px, -1px);
+}
+
+.attention-trace-source--active {
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px #ffd93d !important;
+  transform: translate(-1px, -1px);
+}
+
+.attention-source-summary-node--active {
+  background: #ffd93d !important;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 #000;
 }
 
 .attention-vector-line-value.attention-cell {

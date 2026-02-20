@@ -1401,10 +1401,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const [displayedBlockOutputVector, setDisplayedBlockOutputVector] = useState([])
   const [displayedLogits, setDisplayedLogits] = useState([])
   const [displayedProbs, setDisplayedProbs] = useState([])
+  const [activeTraceTarget, setActiveTraceTarget] = useState(null)
+  const [isTraceReady, setIsTraceReady] = useState(false)
   const pipelineContentRef = useRef(null)
   const bridgeLayerRef = useRef(null)
   const bridgeTopPathRef = useRef(null)
   const bridgeResultPathRef = useRef(null)
+  const traceLayerRef = useRef(null)
   const flowLayerRef = useRef(null)
   const xVectorRef = useRef(null)
   const xValueRefs = useRef([])
@@ -1427,6 +1430,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const headSummaryQRefs = useRef([])
   const headSummaryKRefs = useRef([])
   const headSummaryVRefs = useRef([])
+  const kSourceSummaryRefs = useRef([])
+  const vSourceSummaryRefs = useRef([])
   const mhaInputRowRef = useRef(null)
   const mhaInputCellRefs = useRef([])
   const mhaOutputRowRef = useRef(null)
@@ -1764,6 +1769,185 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     ...logitsVector.map((value) => Math.abs(value)),
     ...probVector.map((value) => Math.abs(value)),
   )
+  const currentKeyRowIndex = Math.max(0, keyRows.length - 1)
+
+  const getTraceTargetKey = (target) => {
+    if (!target || typeof target !== 'object') {
+      return ''
+    }
+    const kind = target.kind
+    if (typeof kind !== 'string') {
+      return ''
+    }
+    switch (kind) {
+      case 'x':
+      case 'q':
+      case 'output':
+      case 'mha-input':
+      case 'mha-output':
+      case 'result':
+      case 'block-output':
+        return `${kind}:${Number(target.dimIndex ?? -1)}`
+      case 'k':
+      case 'v':
+      case 'contrib':
+        return `${kind}:${Number(target.rowIndex ?? -1)}:${Number(target.dimIndex ?? -1)}`
+      case 'weight':
+      case 'logit':
+      case 'prob':
+        return `${kind}:${Number(target.rowIndex ?? -1)}`
+      case 'head-output':
+        return `head-output:${Number(target.headIndex ?? -1)}:${Number(target.dimIndex ?? -1)}`
+      default:
+        return ''
+    }
+  }
+
+  const activeTraceTargetKey = getTraceTargetKey(activeTraceTarget)
+
+  const resolveTraceTargetNode = (target) => {
+    if (!target || typeof target !== 'object') {
+      return null
+    }
+    switch (target.kind) {
+      case 'x':
+        return xValueRefs.current[target.dimIndex] ?? null
+      case 'q':
+        return qCellRefs.current[target.dimIndex] ?? null
+      case 'k':
+        return kCellRefs.current[target.rowIndex]?.[target.dimIndex] ?? null
+      case 'v':
+        return vCellRefs.current[target.rowIndex]?.[target.dimIndex] ?? null
+      case 'weight':
+        return weightValueRefs.current[target.rowIndex] ?? null
+      case 'contrib':
+        return contribCellRefs.current[target.rowIndex]?.[target.dimIndex] ?? null
+      case 'output':
+        return outputCellRefs.current[target.dimIndex] ?? null
+      case 'head-output':
+        return headOutputCellRefs.current[target.headIndex]?.[target.dimIndex] ?? null
+      case 'mha-input':
+        return mhaInputCellRefs.current[target.dimIndex] ?? null
+      case 'mha-output':
+        return mhaOutputCellRefs.current[target.dimIndex] ?? null
+      case 'result':
+        return resultCellRefs.current[target.dimIndex] ?? null
+      case 'block-output':
+        return blockOutputCellRefs.current[target.dimIndex] ?? null
+      case 'logit':
+        return logitValueRefs.current[target.rowIndex] ?? null
+      case 'prob':
+        return probValueRefs.current[target.rowIndex] ?? null
+      default:
+        return null
+    }
+  }
+
+  const dedupeNodes = (nodes) => {
+    const seen = new Set()
+    return nodes.filter((node) => {
+      if (!node || seen.has(node)) {
+        return false
+      }
+      seen.add(node)
+      return true
+    })
+  }
+
+  const resolveTraceSourceNodes = (target) => {
+    if (!target || typeof target !== 'object') {
+      return []
+    }
+    switch (target.kind) {
+      case 'x':
+        return []
+      case 'q':
+        return dedupeNodes(xValueRefs.current)
+      case 'k':
+        if (target.rowIndex === currentKeyRowIndex) {
+          return dedupeNodes(xValueRefs.current)
+        }
+        return dedupeNodes([kSourceSummaryRefs.current[target.rowIndex]])
+      case 'v':
+        if (target.rowIndex === currentKeyRowIndex) {
+          return dedupeNodes(xValueRefs.current)
+        }
+        return dedupeNodes([vSourceSummaryRefs.current[target.rowIndex]])
+      case 'weight':
+        return dedupeNodes([...(qCellRefs.current ?? []), ...((kCellRefs.current[target.rowIndex] ?? []))])
+      case 'contrib':
+        return dedupeNodes([vCellRefs.current[target.rowIndex]?.[target.dimIndex], weightValueRefs.current[target.rowIndex]])
+      case 'output':
+        return dedupeNodes(contribCellRefs.current.map((row) => row?.[target.dimIndex] ?? null))
+      case 'head-output':
+        if (target.headIndex === 0) {
+          return dedupeNodes([outputCellRefs.current[target.dimIndex]])
+        }
+        return dedupeNodes([
+          headSummaryQRefs.current[target.headIndex],
+          headSummaryKRefs.current[target.headIndex],
+          headSummaryVRefs.current[target.headIndex],
+        ])
+      case 'mha-input': {
+        const sourceHeadIndex = Math.floor(target.dimIndex / Math.max(1, headDim))
+        const sourceDimIndex = target.dimIndex % Math.max(1, headDim)
+        return dedupeNodes([headOutputCellRefs.current[sourceHeadIndex]?.[sourceDimIndex]])
+      }
+      case 'mha-output':
+        return dedupeNodes(mhaInputCellRefs.current)
+      case 'result':
+        return dedupeNodes([xValueRefs.current[target.dimIndex], mhaOutputCellRefs.current[target.dimIndex]])
+      case 'block-output':
+        return dedupeNodes(resultCellRefs.current)
+      case 'logit':
+        return dedupeNodes(blockOutputCellRefs.current)
+      case 'prob':
+        return dedupeNodes(logitValueRefs.current)
+      default:
+        return []
+    }
+  }
+
+  const buildTraceInteractionProps = (target, isVisible = true) => {
+    const targetKey = getTraceTargetKey(target)
+    const isSelected = targetKey && targetKey === activeTraceTargetKey
+    const isInteractive = Boolean(targetKey) && isTraceReady && !isAnimating && isVisible
+    const className = `${isInteractive ? 'attention-trace-target' : ''} ${isSelected ? 'attention-trace-target--selected' : ''}`.trim()
+
+    if (!isInteractive) {
+      return {
+        className,
+        onClick: undefined,
+        onKeyDown: undefined,
+        tabIndex: undefined,
+        role: undefined,
+        ariaPressed: undefined,
+      }
+    }
+
+    const toggleTarget = () => {
+      setActiveTraceTarget((previous) => {
+        return getTraceTargetKey(previous) === targetKey ? null : target
+      })
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return
+      }
+      event.preventDefault()
+      toggleTarget()
+    }
+
+    return {
+      className,
+      onClick: toggleTarget,
+      onKeyDown,
+      tabIndex: 0,
+      role: 'button',
+      ariaPressed: isSelected,
+    }
+  }
 
   const animationSignature = `${currentExampleName}-${safeQueryIndex}-${totalSteps}-${selectedTokenRows.length}`
 
@@ -1772,10 +1956,10 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     if (!flowLayer) {
       return undefined
     }
-    const currentKeyIndex = Math.max(0, keyRows.length - 1)
 
     const resetRevealState = () => {
       setOutputStep(0)
+      setIsTraceReady(false)
       setDisplayedWeights(Array.from({ length: weightRows.length }, () => 0))
       setDisplayedOutput(Array.from({ length: headDim }, () => 0))
       setDisplayedMhaOutput(Array.from({ length: nEmbd }, () => 0))
@@ -1785,8 +1969,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       setDisplayedProbs(Array.from({ length: selectedTokenRows.length }, () => 0))
       setRevealedXDims(createRevealVector(currentXRows.length))
       setRevealedQDims(createRevealVector(headDim))
-      setRevealedKCells(createRevealMatrixWithVisibleRows(keyRows.length, headDim, currentKeyIndex))
-      setRevealedVCells(createRevealMatrixWithVisibleRows(valueRows.length, headDim, currentKeyIndex))
+      setRevealedKCells(createRevealMatrixWithVisibleRows(keyRows.length, headDim, currentKeyRowIndex))
+      setRevealedVCells(createRevealMatrixWithVisibleRows(valueRows.length, headDim, currentKeyRowIndex))
       setRevealedWeights(createRevealVector(weightRows.length))
       setRevealedContribCells(createRevealMatrix(weightedVRows.length, headDim))
       setRevealedOutputDims(createRevealVector(headDim))
@@ -1801,6 +1985,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
     const showFinalStateImmediately = () => {
       setOutputStep(totalSteps)
+      setIsAnimating(false)
+      setIsTraceReady(true)
       setDisplayedWeights(weightRows.map((row) => Number(row.value ?? 0)))
       setDisplayedOutput(attentionOutput)
       setDisplayedMhaOutput(mhaOutputVector)
@@ -2305,8 +2491,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       })
       for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
         revealQDimAt(dimIndex, reducedStart + 0.09 + dimIndex * 0.02)
-        revealKCellAt(currentKeyIndex, dimIndex, reducedStart + 0.11 + dimIndex * 0.02)
-        revealVCellAt(currentKeyIndex, dimIndex, reducedStart + 0.13 + dimIndex * 0.02)
+        revealKCellAt(currentKeyRowIndex, dimIndex, reducedStart + 0.11 + dimIndex * 0.02)
+        revealVCellAt(currentKeyRowIndex, dimIndex, reducedStart + 0.13 + dimIndex * 0.02)
       }
 
       const weightStageStart = reducedStart + 0.3
@@ -2525,8 +2711,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     addClassPulse(currentVNode, 'attention-row--pulse', stageBStart + 0.14, 0.14)
     for (let dimIndex = 0; dimIndex < headDim; dimIndex += 1) {
       revealQDimAt(dimIndex, stageBStart + 0.07 + dimIndex * 0.02)
-      revealKCellAt(currentKeyIndex, dimIndex, stageBStart + 0.13 + dimIndex * 0.02)
-      revealVCellAt(currentKeyIndex, dimIndex, stageBStart + 0.17 + dimIndex * 0.02)
+      revealKCellAt(currentKeyRowIndex, dimIndex, stageBStart + 0.13 + dimIndex * 0.02)
+      revealVCellAt(currentKeyRowIndex, dimIndex, stageBStart + 0.17 + dimIndex * 0.02)
     }
 
     const stageCStart = stageBStart + 0.4
@@ -2758,6 +2944,114 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   }, [animationTick, animationSignature, currentXRows.length, hasAttentionData, headDim, nEmbd, nHead, reducedMotion, skipAnimations]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
+    const traceLayerNode = traceLayerRef.current
+    const containerNode = pipelineContentRef.current
+    if (!traceLayerNode || !containerNode) {
+      return undefined
+    }
+
+    let highlightedSourceNodes = []
+
+    const clearSourceHighlights = () => {
+      highlightedSourceNodes.forEach((node) => {
+        node.classList.remove('attention-trace-source--active', 'attention-source-summary-node--active')
+      })
+      highlightedSourceNodes = []
+    }
+
+    const clearTraceLayer = () => {
+      traceLayerNode.innerHTML = ''
+      clearSourceHighlights()
+    }
+
+    const drawTrace = () => {
+      clearTraceLayer()
+
+      if (!isTraceReady || isAnimating || !activeTraceTarget) {
+        return
+      }
+
+      const targetNode = resolveTraceTargetNode(activeTraceTarget)
+      if (!targetNode) {
+        return
+      }
+
+      const targetKey = getTraceTargetKey(activeTraceTarget)
+      const sourceNodes = resolveTraceSourceNodes(activeTraceTarget)
+        .filter((node) => node && node !== targetNode)
+        .filter((node, index, nodes) => nodes.indexOf(node) === index)
+
+      if (!targetKey || !sourceNodes.length) {
+        return
+      }
+
+      sourceNodes.forEach((sourceNode) => {
+        sourceNode.classList.add('attention-trace-source--active')
+        if (sourceNode.classList.contains('attention-source-summary-node')) {
+          sourceNode.classList.add('attention-source-summary-node--active')
+        }
+      })
+      highlightedSourceNodes = sourceNodes
+
+      const layerRect = traceLayerNode.getBoundingClientRect()
+      const getPoint = (node) => {
+        const rect = node.getBoundingClientRect()
+        if (rect.width <= 0 || rect.height <= 0) {
+          return null
+        }
+        return {
+          x: rect.left + rect.width * 0.5 - layerRect.left,
+          y: rect.top + rect.height * 0.5 - layerRect.top,
+        }
+      }
+
+      const targetPoint = getPoint(targetNode)
+      if (!targetPoint) {
+        return
+      }
+
+      sourceNodes.forEach((sourceNode, sourceIndex) => {
+        const sourcePoint = getPoint(sourceNode)
+        if (!sourcePoint) {
+          return
+        }
+        const distance = Math.hypot(targetPoint.x - sourcePoint.x, targetPoint.y - sourcePoint.y)
+        const angle = (Math.atan2(targetPoint.y - sourcePoint.y, targetPoint.x - sourcePoint.x) * 180) / Math.PI
+
+        const line = document.createElement('span')
+        line.className = 'attention-trace-line'
+        line.style.left = `${sourcePoint.x}px`
+        line.style.top = `${sourcePoint.y}px`
+        line.style.width = `${distance}px`
+        line.style.transform = `translateY(-50%) rotate(${angle}deg)`
+        line.style.animationDelay = `${Math.min(180, sourceIndex * 22)}ms`
+        traceLayerNode.appendChild(line)
+      })
+    }
+
+    drawTrace()
+
+    const onResize = () => {
+      drawTrace()
+    }
+    window.addEventListener('resize', onResize)
+
+    let resizeObserver = null
+    if (typeof ResizeObserver === 'function') {
+      resizeObserver = new ResizeObserver(() => {
+        drawTrace()
+      })
+      resizeObserver.observe(containerNode)
+    }
+
+    return () => {
+      window.removeEventListener('resize', onResize)
+      resizeObserver?.disconnect()
+      clearTraceLayer()
+    }
+  }, [activeTraceTarget, activeTraceTargetKey, animationTick, isAnimating, isTraceReady, safeQueryIndex]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useLayoutEffect(() => {
     const containerNode = pipelineContentRef.current
     const bridgeLayerNode = bridgeLayerRef.current
     const topPathNode = bridgeTopPathRef.current
@@ -2832,6 +3126,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       const nextIndex = (prevIndex + direction + CHAPTER_FOUR_EXAMPLE_NAMES.length) % CHAPTER_FOUR_EXAMPLE_NAMES.length
       return nextIndex
     })
+    setActiveTraceTarget(null)
+    setIsTraceReady(false)
     setQueryIndex(0)
     setOpenInfoKey(null)
     setAnimationTick((prevTick) => prevTick + 1)
@@ -2841,6 +3137,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     setQueryIndex((prevIndex) => {
       return clamp(prevIndex + direction, 0, Math.max(0, modelSequence.length - 1))
     })
+    setActiveTraceTarget(null)
+    setIsTraceReady(false)
     setOpenInfoKey(null)
     setAnimationTick((prevTick) => prevTick + 1)
   }
@@ -2849,11 +3147,15 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     if (skipAnimations) {
       return
     }
+    setActiveTraceTarget(null)
+    setIsTraceReady(false)
     setOpenInfoKey(null)
     setAnimationTick((prevTick) => prevTick + 1)
   }
 
   const toggleSkipAnimations = () => {
+    setActiveTraceTarget(null)
+    setIsTraceReady(false)
     setOpenInfoKey(null)
     setSkipAnimations((prev) => !prev)
     setAnimationTick((prevTick) => prevTick + 1)
@@ -2868,6 +3170,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       cellClassName = '',
       visibleMask = null,
       hiddenClassName = '',
+      traceTargetFactory = null,
     } = {},
   ) => {
     return (
@@ -2876,13 +3179,20 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
           const numericValue = Number(value ?? 0)
           const ratio = clamp(Math.abs(numericValue) / maxAbs, 0, 1)
           const isVisible = !Array.isArray(visibleMask) || Boolean(visibleMask[dimIndex])
+          const traceTarget = traceTargetFactory ? traceTargetFactory(dimIndex) : null
+          const traceProps = traceTarget ? buildTraceInteractionProps(traceTarget, isVisible) : null
           return (
             <span
               key={`${keyPrefix}-${dimIndex}`}
               ref={cellRefFactory ? cellRefFactory(dimIndex) : undefined}
               className={`attention-cell ${dense ? 'attention-cell--dense' : ''} ${cellClassName} ${
                 isVisible ? '' : `attention-cell--hidden ${hiddenClassName}`
-              } ${valueTextClass}`.trim()}
+              } ${traceProps?.className ?? ''} ${valueTextClass}`.trim()}
+              onClick={traceProps?.onClick}
+              onKeyDown={traceProps?.onKeyDown}
+              tabIndex={traceProps?.tabIndex}
+              role={traceProps?.role}
+              aria-pressed={traceProps?.ariaPressed}
               style={{
                 backgroundColor: getHeatColor(numericValue, maxAbs),
                 color: ratio > 0.8 ? '#fff' : '#000',
@@ -2904,6 +3214,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       cellRefFactory = null,
       visibleMask = null,
       hiddenClassName = '',
+      traceTargetFactory = null,
     } = {},
   ) => {
     return (
@@ -2912,6 +3223,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
           const numericValue = Number(value ?? 0)
           const ratio = clamp(Math.abs(numericValue) / maxAbs, 0, 1)
           const isVisible = !Array.isArray(visibleMask) || Boolean(visibleMask[dimIndex])
+          const traceTarget = traceTargetFactory ? traceTargetFactory(dimIndex) : null
+          const traceProps = traceTarget ? buildTraceInteractionProps(traceTarget, isVisible) : null
           return (
             <div
               key={`${keyPrefix}-${dimIndex}`}
@@ -2924,7 +3237,12 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 ref={cellRefFactory ? cellRefFactory(dimIndex) : undefined}
                 className={`attention-vector-line-value attention-cell ${dense ? 'attention-vector-line-value--dense16' : ''} ${
                   isVisible ? '' : `attention-value--hidden ${hiddenClassName}`
-                } ${valueTextClass}`.trim()}
+                } ${traceProps?.className ?? ''} ${valueTextClass}`.trim()}
+                onClick={traceProps?.onClick}
+                onKeyDown={traceProps?.onKeyDown}
+                tabIndex={traceProps?.tabIndex}
+                role={traceProps?.role}
+                aria-pressed={traceProps?.ariaPressed}
                 style={{
                   backgroundColor: getHeatColor(numericValue, maxAbs),
                   color: ratio > 0.8 ? '#fff' : '#000',
@@ -3076,6 +3394,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                     {currentXRows.map((row) => {
                       const ratio = clamp(Math.abs(row.value) / maxAbs, 0, 1)
                       const isVisible = Boolean(revealedXDims[row.dim])
+                      const traceProps = buildTraceInteractionProps({ kind: 'x', dimIndex: row.dim }, isVisible)
                       return (
                         <div key={`x-line-${row.dim}`} className="attention-vector-line">
                           <span className={`attention-vector-line-dim ${valueTextClass}`}>{row.dim}</span>
@@ -3083,7 +3402,14 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                             ref={(node) => {
                               xValueRefs.current[row.dim] = node
                             }}
-                            className={`attention-vector-line-value ${!isVisible ? 'attention-value--hidden' : ''} ${valueTextClass}`.trim()}
+                            className={`attention-vector-line-value ${!isVisible ? 'attention-value--hidden' : ''} ${
+                              traceProps.className
+                            } ${valueTextClass}`.trim()}
+                            onClick={traceProps.onClick}
+                            onKeyDown={traceProps.onKeyDown}
+                            tabIndex={traceProps.tabIndex}
+                            role={traceProps.role}
+                            aria-pressed={traceProps.ariaPressed}
                             style={{
                               backgroundColor: getHeatColor(row.value, maxAbs),
                               color: ratio > 0.8 ? '#fff' : '#000',
@@ -3119,6 +3445,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           qCellRefs.current[dimIndex] = node
                         },
                         visibleMask: revealedQDims,
+                        traceTargetFactory: (dimIndex) => ({ kind: 'q', dimIndex }),
                       })}
                     </article>
                   </div>
@@ -3135,6 +3462,16 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           className="attention-row"
                         >
                           <p className={`attention-row-label ${valueTextClass}`}>{`POS ${row.position} · ${row.label}`}</p>
+                          <div className="attention-row-source-summary">
+                            <span
+                              ref={(node) => {
+                                kSourceSummaryRefs.current[rowIndex] = node
+                              }}
+                              className={`attention-source-summary-node ${valueTextClass}`}
+                            >
+                              {`FROM x (POS ${row.position})`}
+                            </span>
+                          </div>
                           {renderVectorCells(row.vector, `k-${row.position}`, {
                             cellRefFactory: (dimIndex) => (node) => {
                               if (!kCellRefs.current[rowIndex]) {
@@ -3143,6 +3480,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                               kCellRefs.current[rowIndex][dimIndex] = node
                             },
                             visibleMask: revealedKCells[rowIndex] ?? [],
+                            traceTargetFactory: (dimIndex) => ({ kind: 'k', rowIndex, dimIndex }),
                           })}
                         </article>
                       ))}
@@ -3161,6 +3499,16 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           className="attention-row"
                         >
                           <p className={`attention-row-label ${valueTextClass}`}>{`POS ${row.position} · ${row.label}`}</p>
+                          <div className="attention-row-source-summary">
+                            <span
+                              ref={(node) => {
+                                vSourceSummaryRefs.current[rowIndex] = node
+                              }}
+                              className={`attention-source-summary-node ${valueTextClass}`}
+                            >
+                              {`FROM x (POS ${row.position})`}
+                            </span>
+                          </div>
                           {renderVectorCells(row.vector, `v-${row.position}`, {
                             cellRefFactory: (dimIndex) => (node) => {
                               if (!vCellRefs.current[rowIndex]) {
@@ -3169,6 +3517,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                               vCellRefs.current[rowIndex][dimIndex] = node
                             },
                             visibleMask: revealedVCells[rowIndex] ?? [],
+                            traceTargetFactory: (dimIndex) => ({ kind: 'v', rowIndex, dimIndex }),
                           })}
                         </article>
                       ))}
@@ -3193,6 +3542,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                     const color = getHeatColor(displayedWeight, 1)
                     const useLightText = displayedWeight >= 0.7
                     const isVisible = Boolean(revealedWeights[rowIndex])
+                    const traceProps = buildTraceInteractionProps({ kind: 'weight', rowIndex }, isVisible)
                     return (
                       <article
                         key={`weight-row-${row.position}`}
@@ -3210,7 +3560,14 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           ref={(node) => {
                             weightValueRefs.current[rowIndex] = node
                           }}
-                          className={`attention-weight-values ${!isVisible ? 'attention-weight-value--hidden' : ''} ${valueTextClass}`.trim()}
+                          className={`attention-weight-values ${!isVisible ? 'attention-weight-value--hidden' : ''} ${
+                            traceProps.className
+                          } ${valueTextClass}`.trim()}
+                          onClick={traceProps.onClick}
+                          onKeyDown={traceProps.onKeyDown}
+                          tabIndex={traceProps.tabIndex}
+                          role={traceProps.role}
+                          aria-pressed={traceProps.ariaPressed}
                         >
                           {isVisible ? displayedWeight.toFixed(4) : ATTENTION_HIDDEN_PLACEHOLDER}
                         </span>
@@ -3251,6 +3608,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           contribCellRefs.current[rowIndex][dimIndex] = node
                         },
                         visibleMask: revealedContribCells[rowIndex] ?? [],
+                        traceTargetFactory: (dimIndex) => ({ kind: 'contrib', rowIndex, dimIndex }),
                       })}
                     </article>
                   ))}
@@ -3263,6 +3621,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                       outputCellRefs.current[dimIndex] = node
                     },
                     visibleMask: revealedOutputDims,
+                    traceTargetFactory: (dimIndex) => ({ kind: 'output', dimIndex }),
                   })}
                 </article>
               </div>
@@ -3294,7 +3653,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                             ref={(node) => {
                               headSummaryQRefs.current[headIdx] = node
                             }}
-                            className={`attention-head-summary-node ${valueTextClass}`}
+                            className={`attention-head-summary-node attention-source-summary-node ${valueTextClass}`}
                           >
                             Q{headIdx}
                           </span>
@@ -3302,7 +3661,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                             ref={(node) => {
                               headSummaryKRefs.current[headIdx] = node
                             }}
-                            className={`attention-head-summary-node ${valueTextClass}`}
+                            className={`attention-head-summary-node attention-source-summary-node ${valueTextClass}`}
                           >
                             K{headIdx}
                           </span>
@@ -3310,7 +3669,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                             ref={(node) => {
                               headSummaryVRefs.current[headIdx] = node
                             }}
-                            className={`attention-head-summary-node ${valueTextClass}`}
+                            className={`attention-head-summary-node attention-source-summary-node ${valueTextClass}`}
                           >
                             V{headIdx}
                           </span>
@@ -3324,6 +3683,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           headOutputCellRefs.current[headIdx][dimIndex] = node
                         },
                         visibleMask: revealedHeadOutputCells[headIdx] ?? [],
+                        traceTargetFactory: (dimIndex) => ({ kind: 'head-output', headIndex: headIdx, dimIndex }),
                       })}
                     </article>
                   ))}
@@ -3347,6 +3707,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           mhaInputCellRefs.current[dimIndex] = node
                         },
                         visibleMask: revealedMhaInputDims,
+                        traceTargetFactory: (dimIndex) => ({ kind: 'mha-input', dimIndex }),
                       })}
                     </article>
                     <article ref={mhaOutputRowRef} className="attention-row attention-row--output attention-mha-pane">
@@ -3357,6 +3718,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                           mhaOutputCellRefs.current[dimIndex] = node
                         },
                         visibleMask: revealedMhaOutputDims,
+                        traceTargetFactory: (dimIndex) => ({ kind: 'mha-output', dimIndex }),
                       })}
                     </article>
                   </div>
@@ -3379,6 +3741,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                         resultCellRefs.current[dimIndex] = node
                       },
                       visibleMask: revealedResultDims,
+                      traceTargetFactory: (dimIndex) => ({ kind: 'result', dimIndex }),
                     })}
                   </article>
                 </div>
@@ -3403,6 +3766,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                         blockOutputCellRefs.current[dimIndex] = node
                       },
                       visibleMask: revealedBlockOutputDims,
+                      traceTargetFactory: (dimIndex) => ({ kind: 'block-output', dimIndex }),
                     })}
                   </article>
                 </div>
@@ -3431,6 +3795,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                       const isVisible = Boolean(revealedLogitRows[rowIndex])
                       const tokenLabel = `${row.label} · ID ${row.tokenId}`
                       const ratio = clamp(Math.abs(shownValue) / logitAbsMax, 0, 1)
+                      const traceProps = buildTraceInteractionProps({ kind: 'logit', rowIndex }, isVisible)
                       return (
                         <article
                           key={`logit-row-${row.tokenId}`}
@@ -3452,7 +3817,12 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                             }}
                             className={`attention-token-value ${
                               !isVisible ? 'attention-weight-value--hidden' : ''
-                            } ${valueTextClass}`.trim()}
+                            } ${traceProps.className} ${valueTextClass}`.trim()}
+                            onClick={traceProps.onClick}
+                            onKeyDown={traceProps.onKeyDown}
+                            tabIndex={traceProps.tabIndex}
+                            role={traceProps.role}
+                            aria-pressed={traceProps.ariaPressed}
                             style={{
                               backgroundColor: getHeatColor(shownValue, logitAbsMax),
                               color: ratio > 0.8 ? '#fff' : '#000',
@@ -3490,6 +3860,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                       const isVisible = Boolean(revealedProbRows[rowIndex])
                       const tokenLabel = `${row.label} · ID ${row.tokenId}`
                       const useLightText = shownValue >= 0.7
+                      const traceProps = buildTraceInteractionProps({ kind: 'prob', rowIndex }, isVisible)
                       return (
                         <article
                           key={`prob-row-${row.tokenId}`}
@@ -3511,7 +3882,12 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                             }}
                             className={`attention-token-value ${
                               !isVisible ? 'attention-weight-value--hidden' : ''
-                            } ${valueTextClass}`.trim()}
+                            } ${traceProps.className} ${valueTextClass}`.trim()}
+                            onClick={traceProps.onClick}
+                            onKeyDown={traceProps.onKeyDown}
+                            tabIndex={traceProps.tabIndex}
+                            role={traceProps.role}
+                            aria-pressed={traceProps.ariaPressed}
                             style={{
                               backgroundColor: getHeatColor(shownValue, 1),
                               color: useLightText ? '#fff' : '#000',
@@ -3539,6 +3915,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
             <path ref={bridgeResultPathRef} className="attention-bridge-path" d="" />
           </svg>
 
+          <div ref={traceLayerRef} className="attention-trace-layer" aria-hidden="true" />
           <div ref={flowLayerRef} className="attention-flow-layer" aria-hidden="true" />
         </div>
       </div>
