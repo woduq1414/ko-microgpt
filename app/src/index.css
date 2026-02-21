@@ -2471,6 +2471,737 @@ a {
   background: rgba(74, 222, 128, 0.75);
 }
 
+@keyframes chapterSevenStepEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chapterSevenQueueEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.chapter-seven-demo-wrap {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.62rem;
+}
+
+.chapter-seven-controls {
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 8px 8px 0 0 #000;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.chapter-seven-queue-shell {
+  border: 4px solid #000;
+  background: #fffdf5;
+  box-shadow: 6px 6px 0 0 #000;
+  padding: 0.48rem;
+}
+
+.chapter-seven-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.chapter-seven-queue-title,
+.chapter-seven-queue-meta {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chapter-seven-queue-row {
+  padding-top: 0.36rem;
+  padding-bottom : 0.36rem;
+  display: flex;
+  align-items: stretch;
+  gap: 0.38rem;
+  overflow-x: auto;
+}
+
+.chapter-seven-queue-empty {
+  margin: 0;
+  border: 3px dashed #000;
+  background: #fff;
+  padding: 0.32rem 0.44rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.chapter-seven-queue-chip {
+  border: 3px solid #000;
+  background: #fff;
+  box-shadow: 4px 4px 0 0 #000;
+  padding: 0.3rem 0.62rem;
+  min-width: max-content;
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+}
+
+.chapter-seven-queue-chip:hover,
+.chapter-seven-queue-chip:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0 0 #000;
+  outline: none;
+}
+
+.chapter-seven-queue-chip:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.chapter-seven-queue-chip--active {
+  background: #ffd93d;
+}
+
+.chapter-seven-queue-chip--entering {
+  animation: chapterSevenQueueEnter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chapter-seven-control-row {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.chapter-seven-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.chapter-seven-action-btn {
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 5px 5px 0 0 #000;
+  min-height: 3.1rem;
+  padding: 0 0.8rem;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+}
+
+.chapter-seven-action-btn:hover,
+.chapter-seven-action-btn:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 7px 7px 0 0 #000;
+  outline: none;
+}
+
+.chapter-seven-action-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.chapter-seven-action-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: 2px 2px 0 0 #000 !important;
+}
+
+.chapter-seven-action-btn--accent {
+  background: #ffd93d;
+}
+
+.chapter-seven-nav-arrow {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 4px solid #000;
+  background: #ffd93d;
+  box-shadow: 4px 4px 0 0 #000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+}
+
+.chapter-seven-nav-arrow:hover,
+.chapter-seven-nav-arrow:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0 0 #000;
+  outline: none;
+}
+
+.chapter-seven-nav-arrow:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.chapter-seven-nav-arrow:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: 2px 2px 0 0 #000 !important;
+}
+
+.chapter-seven-nav-arrow-shape {
+  width: 0;
+  height: 0;
+  border-top: 0.42rem solid transparent;
+  border-bottom: 0.42rem solid transparent;
+}
+
+.chapter-seven-nav-arrow-shape-left {
+  border-right: 0.68rem solid #000;
+}
+
+.chapter-seven-nav-arrow-shape-right {
+  border-left: 0.68rem solid #000;
+}
+
+.chapter-seven-slider-shell {
+  border: 4px solid #000;
+  background: #fffdf5;
+  box-shadow: 6px 6px 0 0 #000;
+  padding: 0.45rem 0.6rem 0.6rem;
+}
+
+.chapter-seven-slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.chapter-seven-slider-title,
+.chapter-seven-slider-value {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chapter-seven-slider-head-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.chapter-seven-temp-help-wrap {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 60;
+}
+
+.chapter-seven-temp-help-btn {
+  width: 1.36rem;
+  height: 1.36rem;
+  border: 3px solid #000;
+  background: #ffd93d;
+  box-shadow: 3px 3px 0 0 #000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear;
+}
+
+.chapter-seven-temp-help-btn:hover,
+.chapter-seven-temp-help-btn:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 0 #000;
+  outline: none;
+}
+
+.chapter-seven-temp-help-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.chapter-seven-temp-help-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(15.8rem, 74vw);
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 6px 6px 0 0 #000;
+  padding: 0.5rem 0.55rem;
+  z-index: 70;
+}
+
+.chapter-seven-temp-help-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chapter-seven-temp-help-text {
+  margin: 0.35rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.chapter-seven-slider-track {
+  margin-top: 0.42rem;
+  display: flex;
+  align-items: center;
+  gap: 0.44rem;
+}
+
+.chapter-seven-slider-arrow {
+  flex: 0 0 auto;
+}
+
+.chapter-seven-slider {
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+  height: 1.65rem;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chapter-seven-slider:focus-visible {
+  outline: none;
+}
+
+.chapter-seven-slider::-webkit-slider-runnable-track {
+  height: 0.68rem;
+  border: 3px solid #000;
+  background:
+    linear-gradient(90deg, rgba(255, 107, 107, 0.28) 0%, rgba(255, 217, 61, 0.28) 50%, rgba(74, 222, 128, 0.28) 100%),
+    #fff;
+  box-shadow: 4px 4px 0 0 #000;
+}
+
+.chapter-seven-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1.26rem;
+  height: 1.26rem;
+  border: 3px solid #000;
+  background: #ffd93d;
+  box-shadow: 2px 2px 0 0 #000;
+  margin-top: -0.42rem;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+  cursor: pointer;
+}
+
+.chapter-seven-slider:hover::-webkit-slider-thumb,
+.chapter-seven-slider:focus-visible::-webkit-slider-thumb {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 #000;
+  background: #ffe066;
+}
+
+.chapter-seven-slider:active::-webkit-slider-thumb {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.chapter-seven-slider::-moz-range-track {
+  height: 0.68rem;
+  border: 3px solid #000;
+  background:
+    linear-gradient(90deg, rgba(255, 107, 107, 0.28) 0%, rgba(255, 217, 61, 0.28) 50%, rgba(74, 222, 128, 0.28) 100%),
+    #fff;
+  box-shadow: 4px 4px 0 0 #000;
+}
+
+.chapter-seven-slider::-moz-range-thumb {
+  width: 1.26rem;
+  height: 1.26rem;
+  border: 3px solid #000;
+  background: #ffd93d;
+  box-shadow: 2px 2px 0 0 #000;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+  cursor: pointer;
+}
+
+.chapter-seven-slider:hover::-moz-range-thumb,
+.chapter-seven-slider:focus-visible::-moz-range-thumb {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 #000;
+  background: #ffe066;
+}
+
+.chapter-seven-slider:active::-moz-range-thumb {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.chapter-seven-inference-shell {
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 8px 8px 0 0 #000;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.chapter-seven-stage-grid {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.chapter-seven-path-shell,
+.chapter-seven-prob-stage {
+  border: 4px solid #000;
+  background: #fffdf5;
+  box-shadow: 6px 6px 0 0 #000;
+  padding: 0.48rem;
+}
+
+.chapter-seven-path-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  border-bottom: 3px solid #000;
+  padding-bottom: 0.3rem;
+}
+
+.chapter-seven-path-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  flex: 0 0 auto;
+}
+
+.chapter-seven-path-arrow-btn {
+  width: 2.05rem;
+  height: 2.05rem;
+}
+
+.chapter-seven-path-pos-pill {
+  margin: 0;
+  border: 3px solid #000;
+  background: #fff;
+  box-shadow: 3px 3px 0 0 #000;
+  min-width: 5.9rem;
+  padding: 0.2rem 0.38rem;
+  line-height: 1;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.14rem;
+}
+
+.chapter-seven-path-pos-char {
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.chapter-seven-path-pos-meta {
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  color: #333;
+}
+
+.chapter-seven-stage-title {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chapter-seven-path-track {
+  margin-top: 0rem;
+  padding-top : 0.4rem;
+  padding-bottom : 0.4rem;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.chapter-seven-path-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.chapter-seven-path-chip {
+  border: 3px solid #000;
+  background: #fff;
+  box-shadow: 3px 3px 0 0 #000;
+  padding: 0.2rem 0.42rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear,
+    color 100ms linear;
+}
+
+.chapter-seven-path-chip:disabled {
+  cursor: default;
+}
+
+.chapter-seven-path-chip--hidden {
+  border-style: dashed;
+  background: #f3f3f3;
+  color: #707070;
+  box-shadow: none;
+}
+
+.chapter-seven-path-chip--clickable {
+  cursor: pointer;
+}
+
+.chapter-seven-path-chip--clickable:hover,
+.chapter-seven-path-chip--clickable:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 0 #000;
+  outline: none;
+}
+
+.chapter-seven-path-chip--clickable:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.chapter-seven-path-chip--current {
+  background: #ffd93d;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 0 #000;
+}
+
+.chapter-seven-path-chip--input-active {
+  background: #d9f99d;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 0 #000;
+}
+
+.chapter-seven-path-chip--new {
+  background: #ffd93d;
+  box-shadow: 5px 5px 0 0 #000;
+  animation: chapterSevenStepEnter 180ms ease-out both;
+}
+
+.chapter-seven-path-arrow {
+  font-size: 0.92rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.chapter-seven-prob-shell {
+  margin-top: 0.38rem;
+  border: 3px solid #000;
+  background: #fff;
+  box-shadow: 4px 4px 0 0 #000;
+  padding: 0.42rem;
+  animation: chapterSevenStepEnter 220ms ease-out both;
+}
+
+.chapter-seven-prob-shell--hidden {
+  background: #f3f3f3;
+}
+
+.chapter-seven-prob-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 3px solid #000;
+  padding-bottom: 0.26rem;
+}
+
+.chapter-seven-prob-input {
+  margin: 0;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.chapter-seven-prob-body {
+  margin-top: 0.4rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.chapter-seven-prob-list {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.chapter-seven-prob-row {
+  border: 2px solid #000;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 2.35rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.16rem;
+  padding: 0.1rem 0.14rem;
+  animation: chapterSevenStepEnter 200ms ease-out both;
+}
+
+.chapter-seven-prob-row--sampled-active {
+  background: #ffe77a;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 0 #000;
+}
+
+.chapter-seven-prob-placeholder {
+  margin: 0;
+  border: 2px dashed #000;
+  background: #f6f6f6;
+  padding: 0.3rem 0.36rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.chapter-seven-prob-rank,
+.chapter-seven-prob-token,
+.chapter-seven-prob-value {
+  line-height: 1.1;
+  font-weight: 900;
+}
+
+.chapter-seven-prob-rank {
+  border: 2px solid #000;
+  background: #fff;
+  text-align: center;
+  padding: 0.06rem 0;
+}
+
+.chapter-seven-prob-token {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-seven-prob-value {
+  border: 2px solid #000;
+  background: #fff;
+  padding: 0.06rem 0.14rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chapter-seven-prob-ellipsis {
+  margin: 0;
+  border: 2px dashed #000;
+  background: #f4f4f4;
+  text-align: center;
+  font-weight: 900;
+  letter-spacing: 0.24em;
+  line-height: 1;
+  padding: 0.2rem 0;
+}
+
+.chapter-seven-sampled-card {
+  border: 4px solid #000;
+  background: #111;
+  color: #fff;
+  box-shadow: 6px 6px 0 0 #000;
+  padding: 0.4rem 0.45rem;
+  transition: opacity 120ms linear;
+}
+
+.chapter-seven-sampled-card--hidden {
+  opacity: 0.42;
+  background: #f5f5f5;
+  color: #333;
+  box-shadow: 4px 4px 0 0 #000;
+}
+
+.chapter-seven-sampled-title {
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chapter-seven-sampled-token {
+  margin: 0.3rem 0 0;
+  font-size: 1.3rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.chapter-seven-sampled-meta {
+  margin: 0.25rem 0 0;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.chapter-seven-empty-shell {
+  border: 4px solid #000;
+  background: #fff;
+  box-shadow: 8px 8px 0 0 #000;
+  padding: 0.7rem 0.75rem;
+}
+
+.chapter-seven-empty-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chapter-seven-empty-body {
+  margin: 0.4rem 0 0;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .attention-demo-wrap {
   margin-top: 0.9rem;
   display: grid;
@@ -3526,7 +4257,7 @@ a {
 }
 
 .attention-token-ellipsis {
-  margin: 0;
+  margin-top : 0.18rem;
   border: 3px dashed #000;
   background: #f4f4f4;
   text-align: center;
@@ -3544,6 +4275,16 @@ a {
 
   .chapter-six-flow {
     grid-template-columns: minmax(0, 0.95fr) minmax(0, 2.05fr);
+    align-items: start;
+  }
+
+  .chapter-seven-stage-grid {
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 1.28fr);
+    align-items: start;
+  }
+
+  .chapter-seven-prob-body {
+    grid-template-columns: minmax(0, 1fr) minmax(210px, 0.55fr);
     align-items: start;
   }
 }
@@ -3580,6 +4321,11 @@ a {
 
   .chapter-six-action-row {
     flex: 0 0 15rem;
+  }
+
+  .chapter-seven-control-row {
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    align-items: stretch;
   }
 }
 
@@ -3647,6 +4393,63 @@ a {
   .chapter-six-scalar-card {
     width: auto;
     min-width: 0;
+  }
+
+  .chapter-seven-controls {
+    padding: 0.4rem;
+  }
+
+  .chapter-seven-action-btn {
+    min-height: 2.8rem;
+    padding: 0 0.45rem;
+  }
+
+  .chapter-seven-slider-shell {
+    padding: 0.42rem;
+  }
+
+  .chapter-seven-temp-help-popover {
+    width: min(13.5rem, 82vw);
+    right: -2px;
+  }
+
+  .chapter-seven-path-head {
+    align-items: flex-start;
+    gap: 0.34rem;
+  }
+
+  .chapter-seven-path-nav {
+    gap: 0.2rem;
+  }
+
+  .chapter-seven-path-arrow-btn {
+    width: 1.9rem;
+    height: 1.9rem;
+    border-width: 3px;
+    box-shadow: 3px 3px 0 0 #000;
+  }
+
+  .chapter-seven-path-pos-pill {
+    min-width: 5.4rem;
+    padding: 0.16rem 0.3rem;
+  }
+
+  .chapter-seven-path-pos-char {
+    font-size: 0.72rem;
+  }
+
+  .chapter-seven-path-pos-meta {
+    font-size: 0.52rem;
+  }
+
+  .chapter-seven-prob-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.22rem;
+  }
+
+  .chapter-seven-sampled-token {
+    font-size: 1.1rem;
   }
 
   .training-prob-shell {
