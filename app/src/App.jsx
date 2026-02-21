@@ -5401,12 +5401,12 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           className={`training-mean-card ${isMeanVisible ? '' : 'training-mean-card--hidden'}`.trim()}
           aria-label="평균 loss"
         >
-          <p className="training-mean-title">MEAN LOSS</p>
+          <p className="training-mean-title">FINAL LOSS</p>
           <p className="training-mean-value">{isMeanVisible ? meanLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}</p>
         </article>
 
-        <section className="training-backprop-stage training-backprop-stage--loss training-backprop-node" aria-label="Mean Loss to Token Loss Gradient">
-          <p className="training-backprop-label">Mean Loss to Token Loss Gradient</p>
+        <section className="training-backprop-stage training-backprop-stage--loss training-backprop-node" aria-label="Token Loss Gradient">
+          <p className="training-backprop-label">Token Loss Gradient</p>
           <div ref={backpropLossScrollRef} className="training-backprop-scroll training-backprop-scroll--loss">
             <div className="training-backprop-grid" style={sharedGridStyle}>
               {backpropData.perPos.map((row, rowIndex) => {
