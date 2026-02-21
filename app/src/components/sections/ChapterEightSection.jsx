@@ -1,4 +1,4 @@
-function ChapterEightSection({ section }) {
+function ChapterEightSection({ section, similarityLabel, differenceLabel }) {
   if (!section) {
     return null
   }
@@ -42,18 +42,17 @@ function ChapterEightSection({ section }) {
 
               <div className="mt-4 space-y-3">
                 <p className="border-4 border-black bg-neo-primary p-3 text-sm font-bold leading-relaxed">
-                  공통점:{' '}
+                  {similarityLabel}{' '}
                   {point.similarity}
                 </p>
                 <p className="border-4 border-black bg-neo-secondary p-3 text-sm font-bold leading-relaxed">
-                  차이점:{' '}
+                  {differenceLabel}{' '}
                   {point.difference}
                 </p>
               </div>
             </article>
           ))}
         </div>
-
       </div>
     </section>
   )

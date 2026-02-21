@@ -11,6 +11,8 @@ import ChapterSixSection from './components/sections/ChapterSixSection'
 import ChapterSevenSection from './components/sections/ChapterSevenSection'
 import ChapterEightSection from './components/sections/ChapterEightSection'
 import OutroSection from './components/sections/OutroSection'
+import { COPY_BY_LANG, detectDefaultLanguage, readLanguageCookie, writeLanguageCookie } from './constants/localization'
+import { LESSON_SECTIONS_BY_LANG } from './constants/lessonSections'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -121,6 +123,12 @@ const getInitialMatch = (query) => {
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
 const formatTokenId = (value) => (typeof value === 'number' ? String(value) : 'N/A')
+const getRoleLabel = (roleKey, roleLabels) => {
+  if (!roleKey) {
+    return ''
+  }
+  return roleLabels?.[roleKey] ?? roleKey
+}
 
 const buildTokenizerFromRaw = (rawText) => {
   const rawDocs = rawText
@@ -159,13 +167,13 @@ const decomposeKoreanNameToNfdTokens = (name) => {
     const jongseongIndex = syllableOffset % 28
 
     const initial = {
-      role: '초성',
+      roleKey: 'initial',
       syllable,
       nfd: String.fromCharCode(0x1100 + choseongIndex),
       display: CHOSEONG_COMPAT[choseongIndex],
     }
     const medial = {
-      role: '중성',
+      roleKey: 'medial',
       syllable,
       nfd: String.fromCharCode(0x1161 + jungseongIndex),
       display: JUNGSEONG_COMPAT[jungseongIndex],
@@ -173,7 +181,7 @@ const decomposeKoreanNameToNfdTokens = (name) => {
     const final =
       jongseongIndex > 0
         ? {
-            role: '종성',
+            roleKey: 'final',
             syllable,
             nfd: String.fromCharCode(0x11a7 + jongseongIndex),
             display: JONGSEONG_COMPAT[jongseongIndex],
@@ -198,34 +206,34 @@ const decomposeKoreanNameToNfdTokens = (name) => {
 
 const getJamoInfoForChapter3 = (nfdChar) => {
   if (!nfdChar) {
-    return { display: '', role: '' }
+    return { display: '', roleKey: '' }
   }
   const code = nfdChar.codePointAt(0)
   if (!code) {
-    return { display: nfdChar, role: '기타' }
+    return { display: nfdChar, roleKey: 'other' }
   }
   if (code >= 0x1100 && code <= 0x1112) {
     return {
       display: CHOSEONG_COMPAT[code - 0x1100] ?? nfdChar,
-      role: '초성',
+      roleKey: 'initial',
     }
   }
   if (code >= 0x1161 && code <= 0x1175) {
     return {
       display: JUNGSEONG_COMPAT[code - 0x1161] ?? nfdChar,
-      role: '중성',
+      roleKey: 'medial',
     }
   }
   if (code >= 0x11a8 && code <= 0x11c2) {
     return {
       display: JONGSEONG_COMPAT[code - 0x11a7] ?? nfdChar,
-      role: '종성',
+      roleKey: 'final',
     }
   }
-  return { display: nfdChar, role: '기타' }
+  return { display: nfdChar, roleKey: 'other' }
 }
 
-const getVocabularyTokenLabel = (tokenId, tokenChars, bos) => {
+const getVocabularyTokenLabel = (tokenId, tokenChars, bos, roleLabels) => {
   if (tokenId === bos) {
     return '[BOS]'
   }
@@ -235,13 +243,13 @@ const getVocabularyTokenLabel = (tokenId, tokenChars, bos) => {
   }
 
   const jamoInfo = getJamoInfoForChapter3(tokenChar)
-  if (jamoInfo.role && jamoInfo.role !== '기타') {
-    return `${jamoInfo.role} ${jamoInfo.display || tokenChar}`
+  if (jamoInfo.roleKey && jamoInfo.roleKey !== 'other') {
+    return `${getRoleLabel(jamoInfo.roleKey, roleLabels)} ${jamoInfo.display || tokenChar}`
   }
   return jamoInfo.display || tokenChar
 }
 
-const getInferenceTokenDisplay = (tokenId, tokenChars, bos, withRole = false) => {
+const getInferenceTokenDisplay = (tokenId, tokenChars, bos, withRole = false, roleLabels) => {
   if (tokenId === bos) {
     return '[BOS]'
   }
@@ -250,8 +258,8 @@ const getInferenceTokenDisplay = (tokenId, tokenChars, bos, withRole = false) =>
     return `ID ${tokenId}`
   }
   const jamoInfo = getJamoInfoForChapter3(tokenChar)
-  if (withRole && jamoInfo.role && jamoInfo.role !== '기타') {
-    return `${jamoInfo.role} ${jamoInfo.display || tokenChar}`
+  if (withRole && jamoInfo.roleKey && jamoInfo.roleKey !== 'other') {
+    return `${getRoleLabel(jamoInfo.roleKey, roleLabels)} ${jamoInfo.display || tokenChar}`
   }
   return jamoInfo.display || tokenChar
 }
@@ -734,7 +742,7 @@ function ChapterTwoJamoCloud({ reducedMotion, isMobile }) {
   )
 }
 
-function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
+function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile, copy }) {
   const [exampleNameIndex, setExampleNameIndex] = useState(0)
   const [selectedTokenId, setSelectedTokenId] = useState(null)
   const [hoveredTokenId, setHoveredTokenId] = useState(null)
@@ -748,7 +756,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
         id: `phoneme-${index}`,
         display: token.display,
         nfd: token.nfd,
-        role: token.role,
+        roleKey: token.roleKey,
         syllable: token.syllable,
         tokenId: tokenizer.stoi[token.nfd],
         isBos: false,
@@ -760,7 +768,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
         id: 'bos',
         display: '[BOS]',
         nfd: 'BOS',
-        role: '시퀀스 시작',
+        roleKey: 'sequenceStart',
         syllable: '-',
         tokenId: tokenizer.bos,
         isBos: true,
@@ -770,7 +778,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
         id: 'bos-end',
         display: '[BOS]',
         nfd: 'BOS',
-        role: '시퀀스 끝',
+        roleKey: 'sequenceEnd',
         syllable: '-',
         tokenId: tokenizer.bos,
         isBos: true,
@@ -798,6 +806,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
 
   const selectedToken = tokenSequence.find((token) => token.id === selectedTokenId) ?? null
 
+  const roleLabels = copy.roles
   const handleTokenHoverStart = (tokenId) => setHoveredTokenId(tokenId)
   const handleTokenHoverEnd = () => setHoveredTokenId(null)
   const handleTokenSelect = (tokenId) => setSelectedTokenId(tokenId)
@@ -821,7 +830,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
             type="button"
             className="token-name-arrow"
             onClick={() => moveExampleName(-1)}
-            aria-label="이전 예시 이름 보기"
+            aria-label={copy.chapter2.prevExampleNameAria}
           >
             <span className="token-name-arrow-shape token-name-arrow-shape-left" />
           </button>
@@ -832,7 +841,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
             type="button"
             className="token-name-arrow"
             onClick={() => moveExampleName(1)}
-            aria-label="다음 예시 이름 보기"
+            aria-label={copy.chapter2.nextExampleNameAria}
           >
             <span className="token-name-arrow-shape token-name-arrow-shape-right" />
           </button>
@@ -853,10 +862,10 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
               onFocus={() => handleTokenHoverStart(token.id)}
               onBlur={handleTokenHoverEnd}
               onClick={() => handleTokenSelect(token.id)}
-              aria-label={`${token.display} ${token.role} token id ${formatTokenId(token.tokenId)}`}
+              aria-label={copy.chapter2.tokenChipAria(token.display, getRoleLabel(token.roleKey, roleLabels), formatTokenId(token.tokenId))}
             >
               <span className="token-chip-symbol">{token.display}</span>
-              <span className="token-chip-meta">{token.role}</span>
+              <span className="token-chip-meta">{getRoleLabel(token.roleKey, roleLabels)}</span>
               {hoveredTokenId === token.id ? (
                 <span className={`token-tooltip ${isMobile ? 'token-tooltip-mobile' : ''}`}>
                   ID {formatTokenId(token.tokenId)}
@@ -868,7 +877,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
       </div>
 
       <aside className="token-inspector reveal">
-        <p className="text-xs font-black uppercase tracking-[0.2em]">현재 선택 토큰</p>
+        <p className="text-xs font-black uppercase tracking-[0.2em]">{copy.chapter2.selectedTokenTitle}</p>
         {selectedToken ? (
           <>
             <p className="mt-3 inline-block border-4 border-white bg-black px-4 py-2 text-2xl font-black">
@@ -876,11 +885,11 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
             </p>
 
             <div className="token-inspector-row">
-              <span>역할</span>
-              <strong>{selectedToken.role}</strong>
+              <span>{copy.chapter2.roleLabel}</span>
+              <strong>{getRoleLabel(selectedToken.roleKey, roleLabels)}</strong>
             </div>
             <div className="token-inspector-row">
-              <span>음절</span>
+              <span>{copy.chapter2.syllableLabel}</span>
               <strong>{selectedToken.syllable}</strong>
             </div>
             <div className="token-inspector-row">
@@ -890,7 +899,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
           </>
         ) : (
           <p className="mt-3 border-4 border-white bg-black px-4 py-4 text-sm font-bold leading-relaxed">
-            아직 선택된 토큰이 없어요. 토큰을 클릭하면 여기에 선택 정보가 표시됩니다.
+            {copy.chapter2.noSelectedTokenMessage}
           </p>
         )}
       </aside>
@@ -898,7 +907,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile }) {
   )
 }
 
-function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
+function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile, copy }) {
   const tokenChars = snapshot?.tokenizer?.uchars ?? []
   const tokenCount = tokenChars.length
   const nEmbd = Number(snapshot?.n_embd ?? 16)
@@ -1351,14 +1360,14 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
   }
   const jamoInfo = getJamoInfoForChapter3(tokenChars[safeTokenIndex])
   const displayChar = jamoInfo.display
-  const displayRole = jamoInfo.role
+  const displayRole = getRoleLabel(jamoInfo.roleKey, copy.roles)
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
   const columns = [
     {
       key: 'token',
       title: 'TOKEN EMBEDDING',
       infoTitle: 'Token Embedding',
-      infoBody: '음운 자체 의미를 담는 벡터입니다.',
+      infoBody: copy.chapter3.tokenEmbeddingInfoBody,
       vector: tokenVector,
       rowRef: tokenRowRefs,
       columnRef: null,
@@ -1367,7 +1376,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
       key: 'position',
       title: 'POSITION EMBEDDING',
       infoTitle: 'Position Embedding',
-      infoBody: "토큰이 시퀀스의 몇 번째인지 알려주는 벡터입니다. 왜 토큰의 위치 정보를 임베딩하는 걸까요? 이는 모델이 시퀀스의 순서를 인식하고, 이전 토큰들의 정보를 참고할 수 있게 도와주기 때문입니다.",
+      infoBody: copy.chapter3.positionEmbeddingInfoBody,
       vector: positionVector,
       rowRef: positionRowRefs,
       columnRef: positionColumnRef,
@@ -1376,7 +1385,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
       key: 'sum',
       title: 'SUM EMBEDDING',
       infoTitle: 'Sum Embedding',
-      infoBody: "토큰 임베딩과 위치 임베딩을 차원별로 더한 중간 입력입니다. 이 벡터는 토큰과 위치의 정보를 모두 반영한 결과로, 모델이 토큰과 위치를 동시에 고려할 수 있게 해줍니다.",
+      infoBody: copy.chapter3.sumEmbeddingInfoBody,
       vector: sumVector,
       rowRef: sumRowRefs,
       columnRef: sumColumnRef,
@@ -1385,7 +1394,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
       key: 'final',
       title: 'FINAL EMBEDDING',
       infoTitle: 'Final Embedding',
-      infoBody: "합 벡터를 RMSNorm으로 스케일링한 최종 입력입니다. 이 과정을 통해 벡터의 크기를 1로 만들고, 모델의 학습 안정성을 높이는 역할을 합니다.",
+      infoBody: copy.chapter3.finalEmbeddingInfoBody,
       vector: displayedFinalVector,
       rowRef: finalRowRefs,
       columnRef: finalColumnRef,
@@ -1396,13 +1405,13 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
     <div className="embedding-demo-wrap reveal">
       <div className="embedding-controls">
         <div className="embedding-nav">
-          <p className="embedding-nav-title">예시 음운</p>
+          <p className="embedding-nav-title">{copy.chapter3.samplePhonemeTitle}</p>
           <div className="embedding-nav-inner">
             <button
               type="button"
               className="embedding-nav-arrow"
               onClick={() => moveToken(-1)}
-              aria-label="이전 음운"
+              aria-label={copy.chapter3.prevPhonemeAria}
             >
               <span className="embedding-nav-arrow-shape embedding-nav-arrow-shape-left" />
             </button>
@@ -1414,7 +1423,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
               type="button"
               className="embedding-nav-arrow"
               onClick={() => moveToken(1)}
-              aria-label="다음 음운"
+              aria-label={copy.chapter3.nextPhonemeAria}
             >
               <span className="embedding-nav-arrow-shape embedding-nav-arrow-shape-right" />
             </button>
@@ -1422,13 +1431,13 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
         </div>
 
         <div className="embedding-nav">
-          <p className="embedding-nav-title">위치 인덱스</p>
+          <p className="embedding-nav-title">{copy.chapter3.positionIndexTitle}</p>
           <div className="embedding-nav-inner">
             <button
               type="button"
               className="embedding-nav-arrow"
               onClick={() => movePosition(-1)}
-              aria-label="이전 위치 인덱스"
+              aria-label={copy.chapter3.prevPositionIndexAria}
             >
               <span className="embedding-nav-arrow-shape embedding-nav-arrow-shape-left" />
             </button>
@@ -1440,7 +1449,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
               type="button"
               className="embedding-nav-arrow"
               onClick={() => movePosition(1)}
-              aria-label="다음 위치 인덱스"
+              aria-label={copy.chapter3.nextPositionIndexAria}
             >
               <span className="embedding-nav-arrow-shape embedding-nav-arrow-shape-right" />
             </button>
@@ -1472,7 +1481,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
                       onClick={() => {
                         setOpenInfoKey((prevKey) => (prevKey === column.key ? null : column.key))
                       }}
-                      aria-label={`${column.title} 개념 설명`}
+                      aria-label={copy.chapter3.conceptAria(column.title)}
                       aria-expanded={isInfoOpen}
                       aria-controls={`embedding-help-${column.key}`}
                     >
@@ -1520,7 +1529,7 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile }) {
   )
 }
 
-function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile }) {
+function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile, copy }) {
   const tokenChars = useMemo(() => snapshot?.tokenizer?.uchars ?? [], [snapshot])
   const bos = Number(snapshot?.tokenizer?.bos ?? -1)
   const nEmbd = Number(snapshot?.n_embd ?? 16)
@@ -1654,7 +1663,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       }
       sequence.push({
         tokenId,
-        label: `${token.role} ${token.display}`.trim(),
+        label: `${getRoleLabel(token.roleKey, copy.roles)} ${token.display}`.trim(),
       })
     })
 
@@ -1664,7 +1673,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         position,
       }
     })
-  }, [blockSize, bos, currentExampleName, isShapeValid, stoi])
+  }, [blockSize, bos, copy.roles, currentExampleName, isShapeValid, stoi])
   const hasAttentionData = isShapeValid && modelSequence.length > 0
 
   useEffect(() => {
@@ -1859,8 +1868,8 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     }
     const jamoInfo = getJamoInfoForChapter3(tokenChar)
     const tokenLabel =
-      jamoInfo.role && jamoInfo.role !== '기타'
-        ? `${jamoInfo.role} ${jamoInfo.display || tokenChar}`
+      jamoInfo.roleKey && jamoInfo.roleKey !== 'other'
+        ? `${getRoleLabel(jamoInfo.roleKey, copy.roles)} ${jamoInfo.display || tokenChar}`
         : jamoInfo.display || tokenChar
     return {
       tokenId,
@@ -3435,7 +3444,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
               onClick={() => {
                 setOpenInfoKey((prevKey) => (prevKey === key ? null : key))
               }}
-              aria-label={`${title} 개념 설명`}
+              aria-label={copy.chapter4.conceptAria(title)}
               aria-expanded={isInfoOpen}
               aria-controls={`attention-help-${key}`}
             >
@@ -3466,13 +3475,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     <div className={`attention-demo-wrap reveal ${reducedMotion ? 'attention-demo-wrap--static' : ''}`}>
       <div className="attention-controls">
         <div className="attention-nav">
-          <p className="attention-nav-title">예시 이름</p>
+          <p className="attention-nav-title">{copy.chapter4.exampleNameTitle}</p>
           <div className="attention-nav-inner">
             <button
               type="button"
               className="attention-nav-arrow"
               onClick={() => moveExampleName(-1)}
-              aria-label="이전 예시 이름"
+              aria-label={copy.chapter4.prevExampleNameAria}
             >
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
             </button>
@@ -3484,7 +3493,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
               type="button"
               className="attention-nav-arrow"
               onClick={() => moveExampleName(1)}
-              aria-label="다음 예시 이름"
+              aria-label={copy.chapter4.nextExampleNameAria}
             >
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-right" />
             </button>
@@ -3492,13 +3501,13 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         </div>
 
         <div className="attention-nav">
-          <p className="attention-nav-title">타겟 인덱스</p>
+          <p className="attention-nav-title">{copy.chapter4.targetIndexTitle}</p>
           <div className="attention-nav-inner">
             <button
               type="button"
               className="attention-nav-arrow"
               onClick={() => moveQueryIndex(-1)}
-              aria-label="이전 예시 인덱스"
+              aria-label={copy.chapter4.prevTargetIndexAria}
             >
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
             </button>
@@ -3510,7 +3519,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
               type="button"
               className="attention-nav-arrow"
               onClick={() => moveQueryIndex(1)}
-              aria-label="다음 예시 인덱스"
+              aria-label={copy.chapter4.nextTargetIndexAria}
             >
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-right" />
             </button>
@@ -3521,7 +3530,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
           type="button"
           className={`attention-replay-btn ${isAnimating ? 'attention-replay-btn--active' : ''}`}
           onClick={replayAnimation}
-          aria-label="Attention 계산 애니메이션 다시 재생"
+          aria-label={copy.chapter4.replayAria}
           aria-disabled={skipAnimations}
           disabled={skipAnimations}
         >
@@ -3532,7 +3541,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
           type="button"
           className={`attention-skip-btn ${skipAnimations ? 'attention-skip-btn--active' : ''}`}
           onClick={toggleSkipAnimations}
-          aria-label="Chapter 4 애니메이션 생략 모드 토글"
+          aria-label={copy.chapter4.skipAria}
           aria-pressed={skipAnimations}
         >
           {`ANIMATION SKIP: ${skipAnimations ? 'ON' : 'OFF'}`}
@@ -3548,7 +3557,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 title: 'FINAL EMBEDDING (x)',
                 badge: `POS ${safeQueryIndex}`,
                 infoTitle: 'Final Embedding (x)',
-                infoBody: '현재 Query 위치의 Final Embedding 벡터입니다. Q, K, V를 만드는 재료가 됩니다.',
+                infoBody: copy.chapter4.finalEmbeddingInfoBody,
               })}
 
               <div className="attention-stage-body">
@@ -3595,8 +3604,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 title: 'Q / K / V',
                 badge: 'HEAD 0',
                 infoTitle: 'Q / K / V',
-                infoBody:
-                  'Q는 Query, K는 Key, V는 Value를 나타냅니다. 비유하자면, Q는 궁금증(질문), K는 정보가 저장된 책장(주소), V는 책장의 실제 내용(정보)과 같습니다. 즉, Q를 들고서 여러 책장(K)을 둘러보고 Q와 K가 얼마나 관련이 있는 지 생각하고, 필요한 내용을(V) 관련이 있는 만큼 꺼내오는 과정입니다. Q/K/V는 Final Embedding(X)을 통해 계산됩니다.',
+                infoBody: copy.chapter4.qkvInfoBody,
               })}
 
               <div className="attention-stage-body">
@@ -3696,7 +3704,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 key: 'stage-weights',
                 title: 'ATTN WEIGHTS',
                 infoTitle: 'Attention Weights',
-                infoBody: 'Q·K 점수를 softmax한 확률 분포 벡터입니다. 이 벡터는 각 POS의 K가 Q와 얼마나 연관성이 있는지를 나타냅니다.',
+                infoBody: copy.chapter4.attentionWeightsInfoBody,
               })}
 
               <div className="attention-stage-body">
@@ -3748,7 +3756,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 title: 'ATTENTION OUTPUT',
                 badge: `step ${safeOutputStep}/${totalSteps}`,
                 infoTitle: 'Attention Output',
-                infoBody: '각 POS의 V에 Attention Weight를 곱해 누적한 결과입니다. 이 벡터는 현재 위치에서 과거 위치들의 정보를 종합적으로 반영한 결과입니다.',
+                infoBody: copy.chapter4.attentionOutputInfoBody,
               })}
 
               <div className="attention-stage-body">
@@ -3799,7 +3807,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   key: 'stage-heads',
                   title: 'HEAD 0~3 OUTPUTS',
                   infoTitle: 'Head Outputs',
-                  infoBody: '상단에서 head0에 대한 Attention Output을 구했습니다. 사실, GPT에서는 여러 개의 head를 사용해 보다 다양한 관점에서 정보(Attention Output)를 추출하고자 합니다. 본 예제에서는 4개 head output을 결합(concat)해 Multi-Head Attention 입력(x_attn)을 만듭니다.',
+                  infoBody: copy.chapter4.headOutputsInfoBody,
                 })}
                 <div className="attention-stage-body">
                   {headOutputRows.map((row, headIdx) => (
@@ -3859,7 +3867,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   key: 'stage-mha',
                   title: 'Multi-Head Attention Output',
                   infoTitle: 'Multi-Head Attention Output',
-                  infoBody: 'x_attn(16차원)에 W_O를 곱해 Multi-Head Attention Output을 만듭니다.',
+                  infoBody: copy.chapter4.multiHeadOutputInfoBody,
                 })}
                 <div className="attention-stage-body">
                   <div className="attention-mha-split">
@@ -3894,7 +3902,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   key: 'stage-result',
                   title: 'ATTENTION BLOCK RESULT',
                   infoTitle: 'Attention Block Result',
-                  infoBody: 'Final Embedding(x)와 Multi-Head Attention Output을 더한 결과 벡터입니다. 이와 같이 이전 데이터를 잔차 연결(residual connection)을 통해 더해주면 모델의 학습 안정성을 높일 수 있어요.',
+                  infoBody: copy.chapter4.attentionBlockResultInfoBody,
                 })}
                 <div className="attention-stage-body">
                   <article ref={resultRowRef} className="attention-row attention-row--output">
@@ -3920,7 +3928,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   key: 'stage-block-output',
                   title: 'TRANSFORMER BLOCK OUTPUT',
                   infoTitle: 'Transformer Block Output',
-                  infoBody: 'Attention Block Result를 입력으로 MLP(Multi Layer Perceptron : rmsnorm → fc1 → relu → fc2 → residual)를 적용한 트랜스포머 블럭의 최종 출력 벡터입니다.',
+                  infoBody: copy.chapter4.transformerBlockOutputInfoBody,
                 })}
                 <div className="attention-stage-body">
                   <article ref={blockOutputRowRef} className="attention-row attention-row--output">
@@ -3942,7 +3950,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   title: 'LOGIT',
                   badge: 'TOP10 + BOTTOM2',
                   infoTitle: 'Logit',
-                  infoBody: 'Transformer Block Output에 선형 변환을 적용해 토큰 별 점수(높을수록 다음 토큰이 될 확률이 높음)를 계산합니다. 전체 vocab에 대해 계산하고, 여기에는 상위 10개와 하위 2개만 표시합니다.',
+                  infoBody: copy.chapter4.logitInfoBody,
                 })}
                 <div className="attention-stage-body">
                   <div className="attention-token-list">
@@ -4007,7 +4015,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                   title: 'NEXT TOKEN PROB',
                   badge: 'SOFTMAX(LOGIT)',
                   infoTitle: 'Next Token Probability',
-                  infoBody: 'logit 전체에 softmax를 적용해 다음 토큰이 나올 확률 분포를 만든 결과입니다.',
+                  infoBody: copy.chapter4.nextTokenProbabilityInfoBody,
                 })}
                 <div className="attention-stage-body">
                   <div className="attention-token-list">
@@ -4087,7 +4095,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   )
 }
 
-function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
+function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
   const tokenChars = useMemo(() => snapshot?.tokenizer?.uchars ?? [], [snapshot])
   const bos = Number(snapshot?.tokenizer?.bos ?? -1)
   const nEmbd = Number(snapshot?.n_embd ?? 0)
@@ -4188,7 +4196,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         {
           id: `phoneme-${index}`,
           tokenId,
-          label: `${token.role} ${token.display}`.trim(),
+          label: `${getRoleLabel(token.roleKey, copy.roles)} ${token.display}`.trim(),
           position: index + 1,
           isBos: false,
         },
@@ -4202,7 +4210,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     ]
 
     return sequence.slice(0, Math.min(blockSize, sequence.length))
-  }, [blockSize, bos, currentExampleName, isShapeValid, stoi])
+  }, [blockSize, bos, copy.roles, currentExampleName, isShapeValid, stoi])
 
   const sumEmbeddingVectors = useMemo(() => {
     return modelSequence.map((item) => {
@@ -4277,7 +4285,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       rows.push({
         pos: queryIndex,
         targetTokenId,
-        targetLabel: getVocabularyTokenLabel(targetTokenId, tokenChars, bos),
+        targetLabel: getVocabularyTokenLabel(targetTokenId, tokenChars, bos, copy.roles),
         targetProb,
         tokenLoss: -Math.log(Math.max(targetProb, 1e-12)),
         probVector,
@@ -4287,7 +4295,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         windowEnd,
         candidateRows: windowTokenIds.map((tokenId, offset) => ({
           tokenId,
-          label: getVocabularyTokenLabel(tokenId, tokenChars, bos),
+          label: getVocabularyTokenLabel(tokenId, tokenChars, bos, copy.roles),
           prob: Number(probVector[tokenId] ?? 0),
           rank: windowStart + offset,
           isTarget: tokenId === targetTokenId,
@@ -4310,6 +4318,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     modelSequence,
     nEmbd,
     nHead,
+    copy.roles,
     tokenChars,
     xVectors,
   ])
@@ -4421,7 +4430,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         type: 'column',
         key: `lmhead-col-${tokenId}`,
         tokenId,
-        label: getVocabularyTokenLabel(tokenId, tokenChars, bos),
+        label: getVocabularyTokenLabel(tokenId, tokenChars, bos, copy.roles),
         isTarget: tokenId === targetId,
         values: Array.from({ length: nEmbd }, (_, dimIndex) => {
           return logitGrad * Number(selectedRow.blockOutputVector?.[dimIndex] ?? 0)
@@ -4541,6 +4550,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     modelSequence,
     nEmbd,
     nHead,
+    copy.roles,
     safeTargetIndex,
     sumEmbeddingVectors,
     tokenChars,
@@ -5108,7 +5118,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     return (
       <div className="token-state-card reveal">
         <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING DEMO</p>
-        <p className="mt-3 text-lg font-bold">학습 시퀀스를 만들 수 없어 표시할 데이터가 없습니다.</p>
+        <p className="mt-3 text-lg font-bold">{copy.chapter5.unavailable}</p>
       </div>
     )
   }
@@ -5238,25 +5248,25 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     <div className={`training-demo-wrap reveal ${reducedMotion ? 'training-demo-wrap--static' : ''}`}>
       <div className="attention-controls">
         <div className="attention-nav">
-          <p className="attention-nav-title">예시 이름</p>
+          <p className="attention-nav-title">{copy.chapter5.exampleNameTitle}</p>
           <div className="attention-nav-inner">
-            <button type="button" className="attention-nav-arrow" onClick={() => moveExampleName(-1)} aria-label="이전 예시 이름 보기">
+            <button type="button" className="attention-nav-arrow" onClick={() => moveExampleName(-1)} aria-label={copy.chapter5.prevExampleNameAria}>
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
             </button>
             <p className="attention-nav-pill">
               <span className="attention-nav-pill-char">{currentExampleName}</span>
               <span className="attention-nav-pill-meta">{`POS 0 ~ ${Math.max(0, trainingRows.length - 1)}`}</span>
             </p>
-            <button type="button" className="attention-nav-arrow" onClick={() => moveExampleName(1)} aria-label="다음 예시 이름 보기">
+            <button type="button" className="attention-nav-arrow" onClick={() => moveExampleName(1)} aria-label={copy.chapter5.nextExampleNameAria}>
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-right" />
             </button>
           </div>
         </div>
 
         <div className="attention-nav">
-          <p className="attention-nav-title">타겟 인덱스</p>
+          <p className="attention-nav-title">{copy.chapter5.targetIndexTitle}</p>
           <div className="attention-nav-inner">
-            <button type="button" className="attention-nav-arrow" onClick={() => moveTargetIndex(-1)} aria-label="이전 타겟 인덱스 보기">
+            <button type="button" className="attention-nav-arrow" onClick={() => moveTargetIndex(-1)} aria-label={copy.chapter5.prevTargetIndexAria}>
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
             </button>
             <p className="attention-nav-pill">
@@ -5265,7 +5275,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
                 {selectedInputToken ? `${selectedInputToken.label} · ID ${selectedInputToken.tokenId}` : 'N/A'}
               </span>
             </p>
-            <button type="button" className="attention-nav-arrow" onClick={() => moveTargetIndex(1)} aria-label="다음 타겟 인덱스 보기">
+            <button type="button" className="attention-nav-arrow" onClick={() => moveTargetIndex(1)} aria-label={copy.chapter5.nextTargetIndexAria}>
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-right" />
             </button>
           </div>
@@ -5275,7 +5285,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           type="button"
           className={`attention-replay-btn ${isAnimating ? 'attention-replay-btn--active' : ''}`}
           onClick={replayAnimation}
-          aria-label="Chapter 5 애니메이션 다시 재생"
+          aria-label={copy.chapter5.replayAria}
           aria-disabled={skipAnimations}
           disabled={skipAnimations}
         >
@@ -5286,7 +5296,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           type="button"
           className={`attention-skip-btn ${skipAnimations ? 'attention-skip-btn--active' : ''}`}
           onClick={toggleSkipAnimations}
-          aria-label="Chapter 5 애니메이션 생략 모드 토글"
+          aria-label={copy.chapter5.skipAria}
           aria-pressed={skipAnimations}
         >
           {`ANIMATION SKIP: ${skipAnimations ? 'ON' : 'OFF'}`}
@@ -5294,7 +5304,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       </div>
 
       <div className="training-flow-scope">
-        <section className="training-prob-shell" aria-label="POS별 next token probability">
+        <section className="training-prob-shell" aria-label={copy.chapter5.nextTokenProbAria}>
           <div className="training-prob-strip" style={sharedGridStyle}>
             {trainingRows.map((row, rowIndex) => {
               const isColumnVisible = Boolean(revealedPosColumns[rowIndex])
@@ -5310,7 +5320,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
                   <div className="training-prob-col-head">
                     <p className={`training-prob-col-pos ${valueTextClass}`}>{`POS ${row.pos}`}</p>
                     <p className={`training-prob-col-target ${valueTextClass}`}>
-                      {isColumnVisible ? `정답: ${row.targetLabel}` : ATTENTION_HIDDEN_PLACEHOLDER}
+                      {isColumnVisible ? copy.chapter5.correctLabel(row.targetLabel) : ATTENTION_HIDDEN_PLACEHOLDER}
                     </p>
                   </div>
                   <div className="training-prob-row-list">
@@ -5359,7 +5369,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           </div>
         </section>
 
-        <section className="training-loss-shell" aria-label="POS별 token loss">
+        <section className="training-loss-shell" aria-label={copy.chapter5.tokenLossAria}>
           <p className="training-loss-title">TOKEN LOSS = -log(prob)</p>
           <div className="training-loss-grid" style={sharedGridStyle}>
             {trainingRows.map((row, rowIndex) => {
@@ -5399,7 +5409,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         <article
           ref={meanCardRef}
           className={`training-mean-card ${isMeanVisible ? '' : 'training-mean-card--hidden'}`.trim()}
-          aria-label="평균 loss"
+          aria-label={copy.chapter5.meanLossAria}
         >
           <p className="training-mean-title">FINAL LOSS</p>
           <p className="training-mean-value">{isMeanVisible ? meanLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}</p>
@@ -5616,9 +5626,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           className={`training-backprop-bridge training-backprop-node ${isBackpropBridgeVisible ? '' : 'training-backprop-bridge--hidden'}`.trim()}
           aria-label="Backpropagation Bridge Description"
         >
-          <p className="training-backprop-label">중략 설명</p>
+          <p className="training-backprop-label">{copy.chapter5.backpropSummaryLabel}</p>
           <p className={`training-backprop-bridge-text ${valueTextClass}`}>
-            중략: Block Output에서 Sum Embedding까지의 내부 연산도 동일한 체인 룰로 역전파됩니다.
+            {copy.chapter5.backpropSummaryText}
           </p>
         </section>
 
@@ -5678,7 +5688,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
   )
 }
 
-function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
+function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
   const stepOptions = useMemo(() => {
     const raw = Array.isArray(trace?.step_options) ? trace.step_options : CHAPTER_SIX_DEFAULT_STEP_OPTIONS
     const normalized = raw
@@ -6115,7 +6125,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
     return (
       <div className="token-state-card reveal">
         <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING TRACE</p>
-        <p className="mt-3 text-lg font-bold">Chapter 6 시각화 데이터를 표시할 수 없습니다.</p>
+        <p className="mt-3 text-lg font-bold">{copy.chapter6.unavailable}</p>
       </div>
     )
   }
@@ -6176,13 +6186,13 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
       <div className="chapter-six-controls">
         <div className="chapter-six-control-row">
           <div className="chapter-six-nav">
-            <p className="chapter-six-nav-title">목표 Step 선택</p>
+            <p className="chapter-six-nav-title">{copy.chapter6.targetStepTitle}</p>
             <div className="chapter-six-nav-inner">
               <button
                 type="button"
                 className="chapter-six-nav-arrow"
                 onClick={() => moveTargetStepPreset(-1)}
-                aria-label="이전 목표 step 선택"
+                aria-label={copy.chapter6.prevTargetStepAria}
               >
                 <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-left" />
               </button>
@@ -6194,7 +6204,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                 type="button"
                 className="chapter-six-nav-arrow"
                 onClick={() => moveTargetStepPreset(1)}
-                aria-label="다음 목표 step 선택"
+                aria-label={copy.chapter6.nextTargetStepAria}
               >
                 <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-right" />
               </button>
@@ -6203,7 +6213,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
 
           <div className="chapter-six-slider-shell">
             <div className="chapter-six-slider-head">
-              <p className="chapter-six-slider-title">진행 Step</p>
+              <p className="chapter-six-slider-title">{copy.chapter6.progressStepTitle}</p>
               <p className="chapter-six-slider-value">{`${safeCurrentStep} / ${targetStep}`}</p>
             </div>
             <div className="chapter-six-slider-track">
@@ -6211,7 +6221,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                 type="button"
                 className="chapter-six-nav-arrow chapter-six-slider-arrow"
                 onClick={() => onStepNudge(-1)}
-                aria-label="이전 step으로 한 칸 이동"
+                aria-label={copy.chapter6.prevStepAria}
               >
                 <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-left" />
               </button>
@@ -6223,13 +6233,13 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                 step={1}
                 value={safeCurrentStep}
                 onChange={onStepSliderChange}
-                aria-label={`학습 step 선택 슬라이더. 현재 ${safeCurrentStep}, 최대 ${targetStep}`}
+                aria-label={copy.chapter6.stepSliderAria(safeCurrentStep, targetStep)}
               />
               <button
                 type="button"
                 className="chapter-six-nav-arrow chapter-six-slider-arrow"
                 onClick={() => onStepNudge(1)}
-                aria-label="다음 step으로 한 칸 이동"
+                aria-label={copy.chapter6.nextStepAria}
               >
                 <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-right" />
               </button>
@@ -6242,16 +6252,16 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                 type="button"
                 className="chapter-six-action-btn"
                 onClick={onTogglePlay}
-                aria-label={isPlaying ? '학습 일시 중지' : '학습 재개'}
+                aria-label={copy.chapter6.togglePlayAria(isPlaying)}
               >
                 {isPlaying ? 'PAUSE' : 'RESUME'}
               </button>
             ) : (
-              <button type="button" className="chapter-six-action-btn" onClick={onStart} aria-label="학습 시작">
+              <button type="button" className="chapter-six-action-btn" onClick={onStart} aria-label={copy.chapter6.startAria}>
                 START
               </button>
             )}
-            <button type="button" className="chapter-six-action-btn" onClick={onReset} aria-label="학습 진행 초기화">
+            <button type="button" className="chapter-six-action-btn" onClick={onReset} aria-label={copy.chapter6.resetAria}>
               RESET
             </button>
           </div>
@@ -6261,18 +6271,18 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
       <div ref={chapterSixFlowScopeRef} className="chapter-six-flow-scope">
         <div className="chapter-six-flow">
           <div className="chapter-six-left-stack">
-            <article className="chapter-six-word-card" aria-label="현재 학습 단어">
+            <article className="chapter-six-word-card" aria-label={copy.chapter6.currentWordAria}>
               <p className="chapter-six-word-title">TRAIN WORD</p>
               <p className="chapter-six-word-value">{wordText}</p>
               <p className="chapter-six-word-step">{`STEP ${safeCurrentStep}`}</p>
             </article>
 
-            <article ref={lossCardRef} className="chapter-six-loss-card" aria-label="현재 loss">
+            <article ref={lossCardRef} className="chapter-six-loss-card" aria-label={copy.chapter6.currentLossAria}>
               <p className="chapter-six-loss-title">LOSS</p>
               <p className="chapter-six-loss-value">{lossText}</p>
             </article>
 
-            <article className="chapter-six-loss-trend-card" aria-label="step별 loss 추이">
+            <article className="chapter-six-loss-trend-card" aria-label={copy.chapter6.lossTrendAria}>
               <div className="chapter-six-loss-trend-head">
                 <p className="chapter-six-loss-trend-title">LOSS TREND</p>
                 <p className="chapter-six-loss-trend-meta">{`STEP 1-${targetStep}`}</p>
@@ -6283,7 +6293,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                     className="chapter-six-loss-trend-svg"
                     viewBox={`0 0 ${lossTrend.chartWidth} ${lossTrend.chartHeight}`}
                     role="img"
-                    aria-label="step별 loss 꺾은선 그래프"
+                    aria-label={copy.chapter6.lossTrendGraphAria}
                   >
                     <rect
                       className="chapter-six-loss-trend-bg"
@@ -6310,7 +6320,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                     ) : null}
                   </svg>
                 ) : (
-                  <p className="chapter-six-loss-trend-empty">loss 데이터가 아직 없습니다.</p>
+                  <p className="chapter-six-loss-trend-empty">{copy.chapter6.lossTrendEmpty}</p>
                 )}
               </div>
               <div className="chapter-six-loss-trend-stats">
@@ -6320,16 +6330,16 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
             </article>
           </div>
 
-          <section className="chapter-six-update-shell" aria-label="파라미터 업데이트 수식">
+          <section className="chapter-six-update-shell" aria-label={copy.chapter6.parameterUpdateAria}>
             <div className="chapter-six-update-head">
               <div className="chapter-six-param-nav">
-                <p className="chapter-six-param-title">예시 파라미터</p>
+                <p className="chapter-six-param-title">{copy.chapter6.exampleParameterTitle}</p>
                 <div className="chapter-six-param-inner">
                   <button
                     type="button"
                     className="chapter-six-nav-arrow"
                     onClick={() => moveParameter(-1)}
-                    aria-label="이전 파라미터 선택"
+                    aria-label={copy.chapter6.prevParameterAria}
                   >
                     <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-left" />
                   </button>
@@ -6343,7 +6353,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                     type="button"
                     className="chapter-six-nav-arrow"
                     onClick={() => moveParameter(1)}
-                    aria-label="다음 파라미터 선택"
+                    aria-label={copy.chapter6.nextParameterAria}
                   >
                     <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-right" />
                   </button>
@@ -6366,7 +6376,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                         type="button"
                         className="chapter-six-lr-help-btn"
                         onClick={() => setChapter6IsLearningRateHelpOpen((previous) => !previous)}
-                        aria-label="Learning Rate 설명 보기"
+                        aria-label={copy.chapter6.learningRateHelpAria}
                         aria-expanded={chapter6IsLearningRateHelpOpen}
                         aria-controls="chapter-six-lr-help-popover"
                       >
@@ -6375,10 +6385,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                       {chapter6IsLearningRateHelpOpen ? (
                         <div id="chapter-six-lr-help-popover" role="note" className="chapter-six-lr-help-popover">
                           <p className="chapter-six-lr-help-title">LEARNING RATE</p>
-                          <p className="chapter-six-lr-help-text">
-                            Learning rate는 gradient를 파라미터에 얼마나 크게 반영할지 정하는 스텝 크기입니다. 값이 크면 빠르게
-                            움직이지만 불안정해질 수 있고, 작으면 안정적이지만 학습이 느려집니다. 이 예제에서 Learning rate는 step이 진행됨에 따라 자동으로 감소(decay)합니다.
-                          </p>
+                          <p className="chapter-six-lr-help-text">{copy.chapter6.learningRateHelpText}</p>
                         </div>
                       ) : null}
                     </div>
@@ -6403,7 +6410,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
   )
 }
 
-function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
+function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile, copy }) {
   const tokenChars = useMemo(() => snapshot?.tokenizer?.uchars ?? [], [snapshot])
   const bos = Number(snapshot?.tokenizer?.bos ?? -1)
   const nEmbd = Number(snapshot?.n_embd ?? 0)
@@ -6593,7 +6600,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
       return {
         kind: 'token',
         tokenId,
-        label: getInferenceTokenDisplay(tokenId, tokenChars, bos, true),
+        label: getInferenceTokenDisplay(tokenId, tokenChars, bos, true, copy.roles),
         prob: Number(probVector[tokenId] ?? 0),
         rank,
         isSampled: tokenId === sampledTokenId,
@@ -6777,10 +6784,10 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
     ? clamp(chapter7PathVisibleCount, 0, selectedSample.tokenPath.length)
     : 0
   const selectedNameTokenLabel = currentStep
-    ? getInferenceTokenDisplay(currentStep.sampledTokenId, tokenChars, bos, true)
+    ? getInferenceTokenDisplay(currentStep.sampledTokenId, tokenChars, bos, true, copy.roles)
     : '[BOS]'
   const selectedInputTokenLabel = currentStep
-    ? getInferenceTokenDisplay(currentStep.inputTokenId, tokenChars, bos, true)
+    ? getInferenceTokenDisplay(currentStep.inputTokenId, tokenChars, bos, true, copy.roles)
     : '[BOS]'
   const currentOutputPathIndex = safeCurrentPosIndex + 1
   const isPathNavigationLocked = !hasSequenceAnimationCompleted || isSequenceAnimating || !selectedSteps.length
@@ -6998,7 +7005,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
     return (
       <div className="token-state-card reveal">
         <p className="text-sm font-black uppercase tracking-[0.2em]">INFERENCE SNAPSHOT</p>
-        <p className="mt-3 text-lg font-bold">Chapter 7 추론 데이터를 표시할 수 없습니다.</p>
+        <p className="mt-3 text-lg font-bold">{copy.chapter7.unavailable}</p>
       </div>
     )
   }
@@ -7006,7 +7013,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
   return (
     <div className="chapter-seven-demo-wrap reveal">
       <div className="chapter-seven-controls">
-        <section className="chapter-seven-queue-shell" aria-label="이름 큐">
+        <section className="chapter-seven-queue-shell" aria-label={copy.chapter7.queueAria}>
           <div className="chapter-seven-queue-head">
             <p className="chapter-seven-queue-title">NAME QUEUE</p>
             <p className="chapter-seven-queue-meta">{`${samples.length} / ${CHAPTER_SEVEN_QUEUE_LIMIT}`}</p>
@@ -7024,14 +7031,14 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                     } ${isActive ? 'chapter-seven-queue-chip--active' : ''}`.trim()}
                     onClick={() => setSelectedSampleId(sample.id)}
                     aria-pressed={isActive}
-                    aria-label={`${sample.name} 생성 경로 보기`}
+                    aria-label={copy.chapter7.queuePathAria(sample.name)}
                   >
                     {sample.name}
                   </button>
                 )
               })
             ) : (
-              <p className="chapter-seven-queue-empty">이름을 생성하면 여기에 쌓입니다.</p>
+              <p className="chapter-seven-queue-empty">{copy.chapter7.queueEmpty}</p>
             )}
           </div>
         </section>
@@ -7042,19 +7049,19 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
               type="button"
               className="chapter-seven-action-btn"
               onClick={() => generateSamples(1)}
-              aria-label="이름 1개 생성하기"
+              aria-label={copy.chapter7.generateOneAria}
               disabled={chapter7IsQueueStaggering}
             >
-              1개 생성하기
+              {copy.chapter7.generateOneText}
             </button>
             <button
               type="button"
               className="chapter-seven-action-btn chapter-seven-action-btn--accent"
               onClick={() => generateSamples(10)}
-              aria-label="이름 10개 생성하기"
+              aria-label={copy.chapter7.generateTenAria}
               disabled={chapter7IsQueueStaggering}
             >
-              10개 생성하기
+              {copy.chapter7.generateTenText}
             </button>
           </div>
 
@@ -7068,7 +7075,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                     type="button"
                     className="chapter-seven-temp-help-btn"
                     onClick={() => setChapter7IsTemperatureHelpOpen((previous) => !previous)}
-                    aria-label="Temperature 설명 보기"
+                    aria-label={copy.chapter7.temperatureHelpAria}
                     aria-expanded={chapter7IsTemperatureHelpOpen}
                     aria-controls="chapter-seven-temp-help-popover"
                   >
@@ -7077,9 +7084,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                   {chapter7IsTemperatureHelpOpen ? (
                     <div id="chapter-seven-temp-help-popover" role="note" className="chapter-seven-temp-help-popover">
                       <p className="chapter-seven-temp-help-title">TEMPERATURE</p>
-                      <p className="chapter-seven-temp-help-text">
-                        값이 낮을수록 안전하고 반복적인 토큰을 고르고, 높을수록 다양한 토큰을 고릅니다. Temperature가 과도하게 높으면 제대로 된 이름을 만들지 못할 수 있어요.
-                      </p>
+                      <p className="chapter-seven-temp-help-text">{copy.chapter7.temperatureHelpText}</p>
                     </div>
                   ) : null}
                 </div>
@@ -7090,7 +7095,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                 type="button"
                 className="chapter-seven-nav-arrow chapter-seven-slider-arrow"
                 onClick={() => onTemperatureNudge(-1)}
-                aria-label="temperature 낮추기"
+                aria-label={copy.chapter7.temperatureDownAria}
               >
                 <span className="chapter-seven-nav-arrow-shape chapter-seven-nav-arrow-shape-left" />
               </button>
@@ -7102,13 +7107,17 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                 step={CHAPTER_SEVEN_TEMPERATURE_STEP}
                 value={temperature}
                 onChange={onTemperatureChange}
-                aria-label={`Temperature 슬라이더. 현재 ${temperature.toFixed(1)}. 최소 ${CHAPTER_SEVEN_MIN_TEMPERATURE}, 최대 ${CHAPTER_SEVEN_MAX_TEMPERATURE}`}
+                aria-label={copy.chapter7.temperatureSliderAria(
+                  temperature.toFixed(1),
+                  CHAPTER_SEVEN_MIN_TEMPERATURE,
+                  CHAPTER_SEVEN_MAX_TEMPERATURE,
+                )}
               />
               <button
                 type="button"
                 className="chapter-seven-nav-arrow chapter-seven-slider-arrow"
                 onClick={() => onTemperatureNudge(1)}
-                aria-label="temperature 높이기"
+                aria-label={copy.chapter7.temperatureUpAria}
               >
                 <span className="chapter-seven-nav-arrow-shape chapter-seven-nav-arrow-shape-right" />
               </button>
@@ -7128,7 +7137,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                     type="button"
                     className="chapter-seven-nav-arrow chapter-seven-path-arrow-btn"
                     onClick={() => onMovePos(-1)}
-                    aria-label="이전 POS 보기"
+                    aria-label={copy.chapter7.prevPosAria}
                     disabled={isPathNavigationLocked || safeCurrentPosIndex <= 0}
                   >
                     <span className="chapter-seven-nav-arrow-shape chapter-seven-nav-arrow-shape-left" />
@@ -7141,7 +7150,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                     type="button"
                     className="chapter-seven-nav-arrow chapter-seven-path-arrow-btn"
                     onClick={() => onMovePos(1)}
-                    aria-label="다음 POS 보기"
+                    aria-label={copy.chapter7.nextPosAria}
                     disabled={isPathNavigationLocked || safeCurrentPosIndex >= selectedSteps.length - 1}
                   >
                     <span className="chapter-seven-nav-arrow-shape chapter-seven-nav-arrow-shape-right" />
@@ -7176,9 +7185,9 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                         } ${isClickable ? 'chapter-seven-path-chip--clickable' : ''}`.trim()}
                         onClick={() => onPathTokenClick(tokenIndex)}
                         disabled={!isClickable}
-                        aria-label={`${tokenIndex}번째 token 보기`}
+                        aria-label={copy.chapter7.tokenViewAria(tokenIndex)}
                       >
-                        {isVisible ? getInferenceTokenDisplay(tokenId, tokenChars, bos, true) : ATTENTION_HIDDEN_PLACEHOLDER}
+                        {isVisible ? getInferenceTokenDisplay(tokenId, tokenChars, bos, true, copy.roles) : ATTENTION_HIDDEN_PLACEHOLDER}
                       </button>
                       {tokenIndex < selectedSample.tokenPath.length - 1 ? <span className="chapter-seven-path-arrow">→</span> : null}
                     </span>
@@ -7235,7 +7244,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                       </p>
                       <p className={`chapter-seven-sampled-meta ${valueTextClass}`}>
                         {chapter7IsSampleVisible
-                          ? `rank #${currentStep.sampledRank + 1} · prob ${Number(currentStep.sampledProb ?? 0).toFixed(6)}`
+                          ? copy.chapter7.sampledMeta(currentStep.sampledRank + 1, Number(currentStep.sampledProb ?? 0).toFixed(6))
                           : ATTENTION_HIDDEN_PLACEHOLDER}
                       </p>
                     </aside>
@@ -7250,163 +7259,36 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
   )
 }
 
-const lessonSections = [
-  {
-    id: 'lesson-1',
-    label: 'CHAPTER 01',
-    title: 'DATA',
-    description:
-      '이름을 만드는 GPT 모델을 학습시키기 위해, 많은 이름들을 모았어요. 이 이름들이 실제론 문서에 해당해요.',
-    points: [
-      '한국어 이름 샘플을 모아 학습 데이터셋을 만들어요.',
-      '각 이름은 모델이 읽는 하나의 문서(document)예요.',
-      '문서 수가 많을수록 이름 패턴을 더 안정적으로 배워요.',
-    ],
-    takeaway: '데이터 품질이 좋아질수록 생성되는 이름 품질도 좋아져요.',
-    bgClass: 'bg-neo-secondary',
-  },
-  {
-    id: 'lesson-2',
-    label: 'CHAPTER 02',
-    title: 'TOKENIZATION',
-    description:
-      '모델이 이름을 만드는 방법을 배우게 하기 위해, 이름을 음운(초성·중성·종성)으로 나누고, 각 음운에 고유한 번호(토큰 ID)를 부여해 모델이 읽을 수 있는 형태로 바꿨어요. 이름의 시작과 끝에는 [BOS]라는 특수한 토큰을 추가해 어디가 시작과 끝인지 알려줘요.',
-    points: [
-      '좌우 화살표로 예시 이름을 바꿔가며 토큰화를 확인해요.',
-      '각 음운 토큰에는 모델이 참조하는 고유 번호(token id)가 매핑돼요.',
-      'BOS 토큰은 이름 시퀀스가 시작된다는 것을 알려주는 특수 토큰이에요.',
-    ],
-    takeaway: '이름을 음운 + 번호 시퀀스로 바꾸면, 모델이 계산 가능한 입력으로 이해할 수 있어요.',
-    bgClass: 'bg-neo-muted',
-  },
-  {
-    id: 'lesson-3',
-    label: 'CHAPTER 03',
-    title: 'EMBEDDING',
-    description:
-      '토큰 임베딩과 위치 임베딩을 더해 모델 입력 임베딩을 만듭니다. 어떤 음운이 어느 위치에 놓였는지에 따라 최종 벡터가 달라집니다.',
-    points: [
-      '각 토큰은 길이 16의 숫자 벡터(토큰 임베딩)로 변환돼요.',
-      '현재 위치도 길이 16의 벡터(위치 임베딩)로 표현돼요.',
-      '두 벡터를 같은 차원끼리 더한 값이 모델 입력이 돼요.',
-    ],
-    takeaway: '같은 음운이라도 위치가 바뀌면 입력 임베딩이 달라집니다.',
-    bgClass: 'bg-white',
-  },
-  {
-    id: 'lesson-4',
-    label: 'CHAPTER 04',
-    title: 'ATTENTION',
-    description:
-      '선택한 예시 이름와 인덱스를 기준으로 Final Embedding(x)에서 Q, K, V를 만들어 Attention Output을 계산하고, 최종적으로 다음 토큰으로 어떤 토큰이 나올 지 확률을 계산합니다.',
-    points: [
-      'Query 위치를 고르면 해당 위치의 Q를 기준으로 과거 토큰들과의 유사도를 계산해요.',
-      'K는 정보의 주소, V는 실제로 가져올 내용을 나타내요.',
-      'softmax로 정규화한 가중치로 V를 합치면 최종 Attention Output이 됩니다.',
-    ],
-    takeaway: 'Attention은 현재 위치가 필요한 과거 정보를 선택적으로 모아오는 연산입니다.',
-    bgClass: 'bg-neo-muted',
-  },
-  {
-    id: 'lesson-5',
-    label: 'CHAPTER 05',
-    title: 'LOSS AND GRADIENT',
-    description:
-      '각 POS에서 정답 토큰이 나올 확률을 통해 예측과 정답의 차이(손실, loss)를 산출합니다. 각 파라미터(보라색 박스)가 이 손실에 기여하는 정도(gradient)를 역전파(backpropagation)를 통해 계산할 수 있습니다.',
-    points: [
-      'POS 0부터 마지막 음운 예측 POS까지 next token 확률을 순서대로 확인해요.',
-      '각 POS마다 정답 토큰 주변 5개 확률만 세로 리스트로 보여줘요.',
-      '아래에서 POS별 token loss와 평균 loss를 함께 확인해요.',
-    ],
-    takeaway: '학습은 각 POS의 정답 확률을 높이는 방향으로 평균 loss를 줄이는 과정입니다.',
-    bgClass: 'bg-white',
-  },
-  {
-    id: 'lesson-6',
-    label: 'CHAPTER 06',
-    title: 'TRAINING',
-    description:
-      '각 파라미터가 손실에 기여하는 정도(gradient)를 활용하여, 모델은 손실을 줄이는 방향으로 반복적으로 파라미터를 조정해나가며 학습합니다.',
-    points: [
-      'step preset(50/100/500/1000)으로 학습 구간을 선택하고 0부터 재생해요.',
-      'pause, reset, 슬라이더로 원하는 step 상태를 직접 확인해요.',
-      '선택한 파라미터의 gradient와 업데이트된 16차원 값을 한 번에 비교해요.',
-    ],
-    takeaway: '표현은 단순한 수식이지만, 실제 값은 Adam 업데이트를 따릅니다.',
-    bgClass: 'bg-neo-muted',
-  },
-  {
-    id: 'lesson-7',
-    label: 'CHAPTER 07',
-    title: 'INFERENCE',
-    description:
-      '학습된 모델을 이용해 실제로 새로운 이름을 만듭니다. 각 POS에서 얻은 다음 토큰 확률 분포에서 랜덤으로 토큰을 뽑아 음운을 순차적으로 생성합니다.',
-    points: [
-      '상단 큐에 생성된 이름을 최대 10개까지 저장하고 클릭해 비교해요.',
-      'Temperature 슬라이더로 샘플링 분포를 조절해 이름 다양성을 확인해요.',
-      '선택한 이름의 POS별 next token probability와 샘플 토큰을 재생해요.',
-    ],
-    takeaway: '추론은 학습된 확률 분포에서 다음 토큰을 순차적으로 샘플링하는 과정입니다.',
-    bgClass: 'bg-neo-secondary',
-  },
-  {
-    id: 'lesson-8',
-    label: 'CHAPTER 08',
-    title: 'REAL GPT',
-    description:
-      'microgpt(이 사이트에서 다루고 있는 모델)는 GPT의 알고리즘 뼈대를 보여주는 간소화된 버전이고, real GPT는 같은 원리를 대규모 데이터·하드웨어·후처리 파이프라인으로 확장한 시스템입니다.',
-    points: [
-      {
-        topic: '데이터',
-        similarity: '둘 다 다음에 나올 토큰을 예측하는 목적으로 텍스트 분포를 학습하며, 데이터 품질이 모델 품질을 크게 좌우합니다.',
-        difference: 'microgpt는 소규모 이름 데이터셋을 다루지만 real GPT는 웹·도서·코드 등 조 단위의 토큰 규모 코퍼스를 중복 제거, 품질 필터링, 도메인 믹싱 후 학습합니다.',
-      },
-      {
-        topic: '토큰화',
-        similarity: '둘 다 문자열을 정수 토큰 시퀀스로 변환한 뒤 임베딩으로 바꿉니다.',
-        difference: 'microgpt는 문자(음운) 단위 토큰화로 수 십개 정도의 vocabulary를 사용하지만, real GPT는 BPE 계열 subword tokenizer를 사용해 약 10만 개 내외 vocabulary를 사용합니다.',
-      },
-      {
-        topic: '임베딩',
-        similarity: '둘 다 token embedding과 position 정보를 결합해 Transformer 입력 표현을 만듭니다.',
-        difference: 'microgpt는 저차원 dense embedding 중심이지만 real GPT는 고차원 임베딩, RoPE(회전 위치 인코딩), 정규화/스케일링 전략을 결합해 긴 문맥 안정성을 높입니다.',
-      },
-      {
-        topic: '모델 구조',
-        similarity: '둘 다 Attention과 MLP, 잔차 연결이 활용 된 Transformer 블록 구조를 공유합니다.',
-        difference: 'microgpt는 수천 파라미터·1개 레이어 수준이고, real GPT는 수천억 파라미터·수백 개 레이어로 확장되며 GQA, gated activation, MoE 같은 최적화 블록이 추가됩니다.',
-      },
-      {
-        topic: '학습 방식',
-        similarity: '둘 다 loss를 최소화하도록 역전파와 Adam 계열 optimizer로 파라미터를 업데이트합니다.',
-        difference: 'real GPT는 대규모 pretraining 이후 post-training(SFT, RLHF/RLAIF 계열 preference optimization)을 거쳐 지시 수행 능력·응답 품질·안전성 정렬을 강화합니다.',
-      },
-      {
-        topic: '추론',
-        similarity: '둘 다 autoregressive decoding으로 다음 토큰을 한 스텝씩 생성합니다.',
-        difference: 'real GPT는 대규모 동시 요청을 처리하기 위해 batching, KV cache paging, quantization, speculative decoding, multi-GPU 분산 서빙을 결합한 별도 inference stack이 필요합니다.',
-      },
-    ],
-    bgClass: 'bg-white',
-  },
-]
-
 function App() {
   const pageRef = useRef(null)
+  const [language, setLanguage] = useState(() => readLanguageCookie() ?? detectDefaultLanguage())
   const [reducedMotion, setReducedMotion] = useState(() => getInitialMatch('(prefers-reduced-motion: reduce)'))
   const [isMobile, setIsMobile] = useState(() => getInitialMatch('(max-width: 767px)'))
   const [chapterTwoTokenizer, setChapterTwoTokenizer] = useState(null)
   const [tokenizerStatus, setTokenizerStatus] = useState('loading')
-  const [tokenizerError, setTokenizerError] = useState('')
+  const [tokenizerErrorKey, setTokenizerErrorKey] = useState('')
   const [embeddingSnapshot, setEmbeddingSnapshot] = useState(null)
   const [embeddingStatus, setEmbeddingStatus] = useState('loading')
-  const [embeddingError, setEmbeddingError] = useState('')
+  const [embeddingErrorKey, setEmbeddingErrorKey] = useState('')
   const [attentionSnapshot, setAttentionSnapshot] = useState(null)
   const [attentionStatus, setAttentionStatus] = useState('loading')
-  const [attentionError, setAttentionError] = useState('')
+  const [attentionErrorKey, setAttentionErrorKey] = useState('')
   const [trainingTrace, setTrainingTrace] = useState(null)
   const [trainingTraceStatus, setTrainingTraceStatus] = useState('loading')
-  const [trainingTraceError, setTrainingTraceError] = useState('')
+  const [trainingTraceErrorKey, setTrainingTraceErrorKey] = useState('')
+  const copy = COPY_BY_LANG[language] ?? COPY_BY_LANG.en
+  const lessonSections = LESSON_SECTIONS_BY_LANG[language] ?? LESSON_SECTIONS_BY_LANG.en
+
+  useEffect(() => {
+    writeLanguageCookie(language)
+  }, [language])
+
+  const onLanguageChange = (nextLanguage) => {
+    if (nextLanguage !== 'ko' && nextLanguage !== 'en') {
+      return
+    }
+    setLanguage(nextLanguage)
+  }
 
   useEffect(() => {
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -7430,7 +7312,7 @@ function App() {
 
     const loadTokenizer = async () => {
       setTokenizerStatus('loading')
-      setTokenizerError('')
+      setTokenizerErrorKey('')
 
       try {
         const response = await fetch('/data/ko_name.txt', { signal: controller.signal })
@@ -7453,7 +7335,7 @@ function App() {
 
         setChapterTwoTokenizer(null)
         setTokenizerStatus('error')
-        setTokenizerError('토큰 맵 로드 실패')
+        setTokenizerErrorKey('tokenMapLoadFailed')
       }
     }
 
@@ -7471,9 +7353,9 @@ function App() {
 
     const loadEmbeddingSnapshot = async () => {
       setEmbeddingStatus('loading')
-      setEmbeddingError('')
+      setEmbeddingErrorKey('')
       setAttentionStatus('loading')
-      setAttentionError('')
+      setAttentionErrorKey('')
 
       try {
         const response = await fetch('/data/ko_embedding_snapshot.json', { signal: controller.signal })
@@ -7535,7 +7417,7 @@ function App() {
         } else {
           setAttentionSnapshot(null)
           setAttentionStatus('error')
-          setAttentionError('Attention/MLP/lm_head 스냅샷 로드 실패')
+          setAttentionErrorKey('attentionSnapshotLoadFailed')
         }
       } catch (error) {
         if (!isActive || error.name === 'AbortError') {
@@ -7543,10 +7425,10 @@ function App() {
         }
         setEmbeddingSnapshot(null)
         setEmbeddingStatus('error')
-        setEmbeddingError('임베딩 스냅샷 로드 실패')
+        setEmbeddingErrorKey('embeddingSnapshotLoadFailed')
         setAttentionSnapshot(null)
         setAttentionStatus('error')
-        setAttentionError('Attention/MLP/lm_head 스냅샷 로드 실패')
+        setAttentionErrorKey('attentionSnapshotLoadFailed')
       }
     }
 
@@ -7564,7 +7446,7 @@ function App() {
 
     const loadTrainingTrace = async () => {
       setTrainingTraceStatus('loading')
-      setTrainingTraceError('')
+      setTrainingTraceErrorKey('')
 
       try {
         const response = await fetch('/data/ko_training_trace.json', { signal: controller.signal })
@@ -7589,7 +7471,7 @@ function App() {
         }
         setTrainingTrace(null)
         setTrainingTraceStatus('error')
-        setTrainingTraceError('Training trace 로드 실패')
+        setTrainingTraceErrorKey('trainingTraceLoadFailed')
       }
     }
 
@@ -7667,12 +7549,14 @@ function App() {
         <div className="scroll-progress-fill h-full w-full origin-top scale-y-0 bg-neo-accent" />
       </div>
 
-      <HeroSection />
+      <HeroSection language={language} onLanguageChange={onLanguageChange} copy={copy.hero} />
 
       <main>
         <ChapterOneSection
           section={chapterOneSection}
           dataCloud={<ChapterOneDataCloud names={CHAPTER_ONE_NAMES} reducedMotion={reducedMotion} isMobile={isMobile} />}
+          corePointsLabel={copy.chapterOne.corePointsLabel}
+          takeawayLabel={copy.chapterOne.takeawayLabel}
         />
 
         <ChapterTwoSection
@@ -7682,14 +7566,14 @@ function App() {
           {tokenizerStatus === 'loading' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">TOKEN MAP</p>
-              <p className="mt-3 text-lg font-bold">토큰 맵을 불러오는 중...</p>
+              <p className="mt-3 text-lg font-bold">{copy.loaders.tokenMapLoading}</p>
             </div>
           ) : null}
 
           {tokenizerStatus === 'error' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">TOKEN MAP</p>
-              <p className="mt-3 text-lg font-bold">{tokenizerError || '토큰 맵 로드 실패'}</p>
+              <p className="mt-3 text-lg font-bold">{copy.errors[tokenizerErrorKey] || copy.errors.tokenMapLoadFailed}</p>
             </div>
           ) : null}
 
@@ -7698,6 +7582,7 @@ function App() {
               tokenizer={chapterTwoTokenizer}
               reducedMotion={reducedMotion}
               isMobile={isMobile}
+              copy={copy}
             />
           ) : null}
         </ChapterTwoSection>
@@ -7706,14 +7591,14 @@ function App() {
           {embeddingStatus === 'loading' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">EMBEDDING SNAPSHOT</p>
-              <p className="mt-3 text-lg font-bold">임베딩 스냅샷을 불러오는 중...</p>
+              <p className="mt-3 text-lg font-bold">{copy.loaders.embeddingSnapshotLoading}</p>
             </div>
           ) : null}
 
           {embeddingStatus === 'error' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">EMBEDDING SNAPSHOT</p>
-              <p className="mt-3 text-lg font-bold">{embeddingError || '임베딩 스냅샷 로드 실패'}</p>
+              <p className="mt-3 text-lg font-bold">{copy.errors[embeddingErrorKey] || copy.errors.embeddingSnapshotLoadFailed}</p>
             </div>
           ) : null}
 
@@ -7722,6 +7607,7 @@ function App() {
               snapshot={embeddingSnapshot}
               reducedMotion={reducedMotion}
               isMobile={isMobile}
+              copy={copy}
             />
           ) : null}
         </ChapterThreeSection>
@@ -7730,14 +7616,14 @@ function App() {
           {attentionStatus === 'loading' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">ATTENTION SNAPSHOT</p>
-              <p className="mt-3 text-lg font-bold">Attention 스냅샷을 불러오는 중...</p>
+              <p className="mt-3 text-lg font-bold">{copy.loaders.attentionSnapshotLoading}</p>
             </div>
           ) : null}
 
           {attentionStatus === 'error' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">ATTENTION SNAPSHOT</p>
-              <p className="mt-3 text-lg font-bold">{attentionError || 'Attention 스냅샷 로드 실패'}</p>
+              <p className="mt-3 text-lg font-bold">{copy.errors[attentionErrorKey] || copy.errors.attentionSnapshotLoadFailed}</p>
             </div>
           ) : null}
 
@@ -7747,6 +7633,7 @@ function App() {
               attention={attentionSnapshot}
               reducedMotion={reducedMotion}
               isMobile={isMobile}
+              copy={copy}
             />
           ) : null}
         </ChapterFourSection>
@@ -7755,19 +7642,19 @@ function App() {
           {attentionStatus === 'loading' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING SNAPSHOT</p>
-              <p className="mt-3 text-lg font-bold">Training 스냅샷을 불러오는 중...</p>
+              <p className="mt-3 text-lg font-bold">{copy.loaders.trainingSnapshotLoading}</p>
             </div>
           ) : null}
 
           {attentionStatus === 'error' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING SNAPSHOT</p>
-              <p className="mt-3 text-lg font-bold">{attentionError || 'Training 스냅샷 로드 실패'}</p>
+              <p className="mt-3 text-lg font-bold">{copy.errors.trainingSnapshotLoadFailed}</p>
             </div>
           ) : null}
 
           {attentionStatus === 'ready' && embeddingSnapshot ? (
-            <ChapterFiveTrainingDemo snapshot={embeddingSnapshot} reducedMotion={reducedMotion} isMobile={isMobile} />
+            <ChapterFiveTrainingDemo snapshot={embeddingSnapshot} reducedMotion={reducedMotion} isMobile={isMobile} copy={copy} />
           ) : null}
         </ChapterFiveSection>
 
@@ -7775,19 +7662,19 @@ function App() {
           {trainingTraceStatus === 'loading' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING TRACE</p>
-              <p className="mt-3 text-lg font-bold">Training trace를 불러오는 중...</p>
+              <p className="mt-3 text-lg font-bold">{copy.loaders.trainingTraceLoading}</p>
             </div>
           ) : null}
 
           {trainingTraceStatus === 'error' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING TRACE</p>
-              <p className="mt-3 text-lg font-bold">{trainingTraceError || 'Training trace 로드 실패'}</p>
+              <p className="mt-3 text-lg font-bold">{copy.errors[trainingTraceErrorKey] || copy.errors.trainingTraceLoadFailed}</p>
             </div>
           ) : null}
 
           {trainingTraceStatus === 'ready' && trainingTrace ? (
-            <ChapterSixTrainingDemo trace={trainingTrace} reducedMotion={reducedMotion} isMobile={isMobile} />
+            <ChapterSixTrainingDemo trace={trainingTrace} reducedMotion={reducedMotion} isMobile={isMobile} copy={copy} />
           ) : null}
         </ChapterSixSection>
 
@@ -7795,24 +7682,28 @@ function App() {
           {embeddingStatus === 'loading' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">INFERENCE SNAPSHOT</p>
-              <p className="mt-3 text-lg font-bold">Inference 스냅샷을 불러오는 중...</p>
+              <p className="mt-3 text-lg font-bold">{copy.loaders.inferenceSnapshotLoading}</p>
             </div>
           ) : null}
 
           {embeddingStatus === 'error' ? (
             <div className="token-state-card reveal">
               <p className="text-sm font-black uppercase tracking-[0.2em]">INFERENCE SNAPSHOT</p>
-              <p className="mt-3 text-lg font-bold">{embeddingError || 'Inference 스냅샷 로드 실패'}</p>
+              <p className="mt-3 text-lg font-bold">{copy.errors.inferenceSnapshotLoadFailed}</p>
             </div>
           ) : null}
 
           {embeddingStatus === 'ready' && embeddingSnapshot ? (
-            <ChapterSevenInferenceDemo snapshot={embeddingSnapshot} reducedMotion={reducedMotion} isMobile={isMobile} />
+            <ChapterSevenInferenceDemo snapshot={embeddingSnapshot} reducedMotion={reducedMotion} isMobile={isMobile} copy={copy} />
           ) : null}
         </ChapterSevenSection>
 
-        <ChapterEightSection section={chapterEightSection} />
-        <OutroSection />
+        <ChapterEightSection
+          section={chapterEightSection}
+          similarityLabel={copy.chapterEight.similarityLabel}
+          differenceLabel={copy.chapterEight.differenceLabel}
+        />
+        <OutroSection copy={copy.outro} />
       </main>
     </div>
   )

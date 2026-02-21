@@ -1,4 +1,4 @@
-function ChapterOneSection({ section, dataCloud }) {
+function ChapterOneSection({ section, dataCloud, corePointsLabel, takeawayLabel }) {
   if (!section) {
     return null
   }
@@ -29,7 +29,7 @@ function ChapterOneSection({ section, dataCloud }) {
 
         <aside className="reveal self-center">
           <div className="neo-card rotate-1 bg-white p-6">
-            <p className="border-b-4 border-black pb-3 text-xs font-black uppercase tracking-[0.22em]">핵심 포인트</p>
+            <p className="border-b-4 border-black pb-3 text-xs font-black uppercase tracking-[0.22em]">{corePointsLabel}</p>
             <ul className="mt-4 space-y-3">
               {section.points.map((point) => (
                 <li key={point} className="border-4 border-black bg-neo-cream px-4 py-3 text-base font-bold">
@@ -40,7 +40,7 @@ function ChapterOneSection({ section, dataCloud }) {
           </div>
 
           <div className="-mt-6 ml-auto max-w-sm -rotate-2 border-4 border-black bg-black p-5 text-white shadow-[8px_8px_0px_0px_#000]">
-            <p className="text-xs font-black uppercase tracking-[0.2em]">Takeaway</p>
+            <p className="text-xs font-black uppercase tracking-[0.2em]">{takeawayLabel}</p>
             <p className="mt-2 text-lg font-bold leading-snug">{section.takeaway}</p>
           </div>
         </aside>

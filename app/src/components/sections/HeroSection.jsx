@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-function HeroSection() {
+function HeroSection({ language, onLanguageChange, copy }) {
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
   const infoStickerRef = useRef(null)
   const modalCloseButtonRef = useRef(null)
@@ -31,17 +31,44 @@ function HeroSection() {
     }
   }, [isProjectInfoOpen])
 
+  const setLanguage = (nextLanguage) => {
+    if (typeof onLanguageChange === 'function') {
+      onLanguageChange(nextLanguage)
+    }
+  }
+
   return (
     <header id="hero" className="snap-section relative min-h-screen border-b-8 border-black bg-neo-cream">
       <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-70" />
       <div aria-hidden="true" className="absolute inset-0 texture-halftone opacity-20" />
 
+      <div className="hero-control-cluster">
+        <div className="hero-language-toggle hero-sticker" role="group" aria-label={copy.languageSwitchAria}>
+          <button
+            type="button"
+            className={`hero-language-option ${language === 'ko' ? 'hero-language-option--active' : ''}`.trim()}
+            onClick={() => setLanguage('ko')}
+            aria-pressed={language === 'ko'}
+          >
+            KO
+          </button>
+          <button
+            type="button"
+            className={`hero-language-option ${language === 'en' ? 'hero-language-option--active' : ''}`.trim()}
+            onClick={() => setLanguage('en')}
+            aria-pressed={language === 'en'}
+          >
+            EN
+          </button>
+        </div>
+      </div>
+
       <button
         ref={infoStickerRef}
         type="button"
-        className="hero-info-sticker hero-sticker"
+        className="hero-info-sticker hero-info-sticker--bottom-right hero-sticker"
         onClick={() => setIsProjectInfoOpen(true)}
-        aria-label="프로젝트 정보 열기"
+        aria-label={copy.openProjectInfoAria}
         aria-haspopup="dialog"
         aria-expanded={isProjectInfoOpen}
         aria-controls="hero-project-info-modal"
@@ -61,12 +88,12 @@ function HeroSection() {
         </h1>
 
         <p className="hero-sticker mt-10 max-w-3xl -rotate-1 border-4 border-black bg-white p-6 text-lg font-bold leading-relaxed shadow-[8px_8px_0px_0px_#000] md:text-xl">
-          한국어 이름 생성 GPT가 어떻게 데이터를 읽고, 새로운 이름을 생성하는 지 알아볼까요?
+          {copy.intro}
         </p>
 
         <div className="hero-sticker mt-8 flex flex-wrap gap-4">
           <a href="#lesson-1" className="neo-btn bg-neo-accent px-8 py-4 text-sm font-black uppercase tracking-[0.14em]">
-            Start From Data
+            {copy.startFromData}
           </a>
           <a
             href="https://github.com/woduq1414/ko-microgpt"
@@ -74,7 +101,7 @@ function HeroSection() {
             rel="noopener noreferrer"
             className="neo-btn bg-neo-secondary px-8 py-4 text-sm font-black uppercase tracking-[0.14em]"
           >
-            Go To Github
+            {copy.goToGithub}
           </a>
         </div>
       </div>
@@ -99,25 +126,29 @@ function HeroSection() {
               type="button"
               className="hero-info-modal-close"
               onClick={() => setIsProjectInfoOpen(false)}
-              aria-label="프로젝트 정보 닫기"
+              aria-label={copy.closeProjectInfoAria}
             >
               X
             </button>
 
             <p id="hero-project-info-title" className="hero-info-modal-title">
-              PROJECT INFO
+              {copy.projectInfoTitle}
             </p>
             <p id="hero-project-info-description" className="hero-info-modal-text">
-              이 프로젝트는 <a href="https://github.com/karpathy" target="_blank" rel="noopener noreferrer" className="hero-info-inline-link">Karpathy</a>의{' '}
+              {copy.projectInfoStart}
+              <a href="https://github.com/karpathy" target="_blank" rel="noopener noreferrer" className="hero-info-inline-link">
+                Karpathy
+              </a>
+              {copy.projectInfoMiddle}
               <a
                 href="https://gist.github.com/karpathy/8627fe009c40f57531cb18360106ce95"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hero-info-inline-link"
               >
-                microgpt 프로젝트
+                {copy.projectInfoMicrogptLinkText}
               </a>
-              를 기반으로, 한국어 이름을 생성하는 GPT 모델의 내부 동작 과정을 시각화 한 프로젝트입니다.
+              {copy.projectInfoEnd}
             </p>
 
             <a
@@ -126,7 +157,7 @@ function HeroSection() {
               rel="noopener noreferrer"
               className="neo-btn hero-info-modal-link bg-neo-secondary px-6 py-3 text-sm font-black uppercase tracking-[0.14em]"
             >
-              Go To this website Github
+              {copy.projectInfoGithub}
             </a>
           </div>
         </div>
