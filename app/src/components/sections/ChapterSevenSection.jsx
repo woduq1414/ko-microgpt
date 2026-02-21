@@ -13,7 +13,7 @@ function ChapterSevenSection({ section, children }) {
 
       <div className="relative z-10 mx-auto w-full max-w-7xl px-6 py-8 md:px-12 md:py-10">
         <article className="reveal max-w-6xl">
-          <p className="inline-block -rotate-2 border-4 border-black bg-neo-secondary px-4 py-2 text-sm font-black tracking-[0.22em]">
+          <p className="inline-block -rotate-2 border-4 border-black bg-white px-4 py-2 text-sm font-black tracking-[0.22em]">
             {section.label}
           </p>
 

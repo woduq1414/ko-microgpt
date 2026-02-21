@@ -1,4 +1,4 @@
-function ChapterOneSection({ section, dataCloud, takeawayNumber }) {
+function ChapterOneSection({ section, dataCloud }) {
   if (!section) {
     return null
   }
@@ -40,7 +40,7 @@ function ChapterOneSection({ section, dataCloud, takeawayNumber }) {
           </div>
 
           <div className="-mt-6 ml-auto max-w-sm -rotate-2 border-4 border-black bg-black p-5 text-white shadow-[8px_8px_0px_0px_#000]">
-            <p className="text-xs font-black uppercase tracking-[0.2em]">Takeaway {takeawayNumber}</p>
+            <p className="text-xs font-black uppercase tracking-[0.2em]">Takeaway</p>
             <p className="mt-2 text-lg font-bold leading-snug">{section.takeaway}</p>
           </div>
         </aside>

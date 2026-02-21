@@ -1,8 +1,53 @@
+import { useEffect, useRef, useState } from 'react'
+
 function HeroSection() {
+  const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
+  const infoStickerRef = useRef(null)
+  const modalCloseButtonRef = useRef(null)
+
+  useEffect(() => {
+    if (!isProjectInfoOpen) {
+      return undefined
+    }
+
+    const infoStickerElement = infoStickerRef.current
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    modalCloseButtonRef.current?.focus()
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setIsProjectInfoOpen(false)
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+      infoStickerElement?.focus()
+    }
+  }, [isProjectInfoOpen])
+
   return (
     <header className="snap-section relative min-h-screen border-b-8 border-black bg-neo-cream">
       <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-70" />
       <div aria-hidden="true" className="absolute inset-0 texture-halftone opacity-20" />
+
+      <button
+        ref={infoStickerRef}
+        type="button"
+        className="hero-info-sticker hero-sticker"
+        onClick={() => setIsProjectInfoOpen(true)}
+        aria-label="프로젝트 정보 열기"
+        aria-haspopup="dialog"
+        aria-expanded={isProjectInfoOpen}
+        aria-controls="hero-project-info-modal"
+      >
+        i
+      </button>
 
       <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col justify-center px-6 py-16 md:px-12">
         <p className="hero-sticker inline-block w-fit -rotate-2 border-4 border-black bg-neo-accent px-5 py-2 text-sm font-black tracking-[0.22em]">
@@ -33,6 +78,59 @@ function HeroSection() {
           </a>
         </div>
       </div>
+
+      {isProjectInfoOpen ? (
+        <div
+          className="hero-info-backdrop"
+          onClick={() => setIsProjectInfoOpen(false)}
+          role="presentation"
+        >
+          <div
+            id="hero-project-info-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="hero-project-info-title"
+            aria-describedby="hero-project-info-description"
+            className="hero-info-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              ref={modalCloseButtonRef}
+              type="button"
+              className="hero-info-modal-close"
+              onClick={() => setIsProjectInfoOpen(false)}
+              aria-label="프로젝트 정보 닫기"
+            >
+              X
+            </button>
+
+            <p id="hero-project-info-title" className="hero-info-modal-title">
+              PROJECT INFO
+            </p>
+            <p id="hero-project-info-description" className="hero-info-modal-text">
+              이 프로젝트는 <a href="https://github.com/karpathy" target="_blank" rel="noopener noreferrer" className="hero-info-inline-link">Karpathy</a>의{' '}
+              <a
+                href="https://gist.github.com/karpathy/8627fe009c40f57531cb18360106ce95"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hero-info-inline-link"
+              >
+                microgpt 프로젝트
+              </a>
+              를 기반으로, 한국어 이름을 생성하는 GPT 모델의 내부 동작 과정을 시각화 한 프로젝트입니다.
+            </p>
+
+            <a
+              href="https://github.com/woduq1414/ko-microgpt/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="neo-btn hero-info-modal-link bg-neo-secondary px-6 py-3 text-sm font-black uppercase tracking-[0.14em]"
+            >
+              Go To this website Github
+            </a>
+          </div>
+        </div>
+      ) : null}
     </header>
   )
 }

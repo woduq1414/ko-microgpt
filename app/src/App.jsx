@@ -9,6 +9,7 @@ import ChapterFourSection from './components/sections/ChapterFourSection'
 import ChapterFiveSection from './components/sections/ChapterFiveSection'
 import ChapterSixSection from './components/sections/ChapterSixSection'
 import ChapterSevenSection from './components/sections/ChapterSevenSection'
+import ChapterEightSection from './components/sections/ChapterEightSection'
 import FooterSection from './components/sections/FooterSection'
 
 gsap.registerPlugin(ScrollTrigger)
@@ -3595,7 +3596,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
                 badge: 'HEAD 0',
                 infoTitle: 'Q / K / V',
                 infoBody:
-                  'Q는 Query, K는 Key, V는 Value를 나타냅니다. 비유하자면, Q는 궁금증(질문), K는 정보가 저장된 책장(주소), V는 책장의 실제 내용(정보)과 같습니다. 즉, Q를 들고서 여러 책장(K)을 둘러보고, 필요한 내용을(V) 꺼내오는 과정입니다.',
+                  'Q는 Query, K는 Key, V는 Value를 나타냅니다. 비유하자면, Q는 궁금증(질문), K는 정보가 저장된 책장(주소), V는 책장의 실제 내용(정보)과 같습니다. 즉, Q를 들고서 여러 책장(K)을 둘러보고 Q와 K가 얼마나 관련이 있는 지 생각하고, 필요한 내용을(V) 관련이 있는 만큼 꺼내오는 과정입니다. Q/K/V는 Final Embedding(X)을 통해 계산됩니다.',
               })}
 
               <div className="attention-stage-body">
@@ -7024,9 +7025,9 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile }) {
                   </button>
                   {chapter7IsTemperatureHelpOpen ? (
                     <div id="chapter-seven-temp-help-popover" role="note" className="chapter-seven-temp-help-popover">
-                      <p className="chapter-seven-temp-help-title">TEMPERATURE GUIDE</p>
+                      <p className="chapter-seven-temp-help-title">TEMPERATURE</p>
                       <p className="chapter-seven-temp-help-text">
-                        값이 낮을수록 안전하고 반복적인 토큰을 고르고, 높을수록 다양한 토큰을 고릅니다. 범위는 0.1 ~ 1.5입니다.
+                        값이 낮을수록 안전하고 반복적인 토큰을 고르고, 높을수록 다양한 토큰을 고릅니다. Temperature가 과도하게 높으면 제대로 된 이름을 만들지 못할 수 있어요.
                       </p>
                     </div>
                   ) : null}
@@ -7288,13 +7289,53 @@ const lessonSections = [
     label: 'CHAPTER 07',
     title: 'INFERENCE',
     description:
-      '학습된 모델을 이용해 실제로 새로운 이름을 생성합니다. Temperature를 조절해 샘플링 다양성을 바꾸고, 각 POS에서 어떤 next token 확률 분포를 통해 이름이 결정됐는지 단계별로 확인합니다.',
+      '학습된 모델을 이용해 실제로 새로운 이름을 만듭니다. 각 POS에서 얻은 다음 토큰 확률 분포에서 랜덤으로 토큰을 뽑아 음운을 순차적으로 생성합니다.',
     points: [
       '상단 큐에 생성된 이름을 최대 10개까지 저장하고 클릭해 비교해요.',
       'Temperature 슬라이더로 샘플링 분포를 조절해 이름 다양성을 확인해요.',
       '선택한 이름의 POS별 next token probability와 샘플 토큰을 재생해요.',
     ],
     takeaway: '추론은 학습된 확률 분포에서 다음 토큰을 순차적으로 샘플링하는 과정입니다.',
+    bgClass: 'bg-neo-secondary',
+  },
+  {
+    id: 'lesson-8',
+    label: 'CHAPTER 08',
+    title: 'REAL GPT',
+    description:
+      'microgpt(이 사이트에서 다루고 있는 모델)는 GPT의 알고리즘 뼈대를 보여주는 간소화된 버전이고, real GPT는 같은 원리를 대규모 데이터·하드웨어·후처리 파이프라인으로 확장한 시스템입니다.',
+    points: [
+      {
+        topic: '데이터',
+        similarity: '둘 다 다음에 나올 토큰을 예측하는 목적으로 텍스트 분포를 학습하며, 데이터 품질이 모델 품질을 크게 좌우합니다.',
+        difference: 'microgpt는 소규모 이름 데이터셋을 다루지만 real GPT는 웹·도서·코드 등 조 단위의 토큰 규모 코퍼스를 중복 제거, 품질 필터링, 도메인 믹싱 후 학습합니다.',
+      },
+      {
+        topic: '토큰화',
+        similarity: '둘 다 문자열을 정수 토큰 시퀀스로 변환한 뒤 임베딩으로 바꿉니다.',
+        difference: 'microgpt는 문자(음운) 단위 토큰화로 수 십개 정도의 vocabulary를 사용하지만, real GPT는 BPE 계열 subword tokenizer를 사용해 약 10만 개 내외 vocabulary를 사용합니다.',
+      },
+      {
+        topic: '임베딩',
+        similarity: '둘 다 token embedding과 position 정보를 결합해 Transformer 입력 표현을 만듭니다.',
+        difference: 'microgpt는 저차원 dense embedding 중심이지만 real GPT는 고차원 임베딩, RoPE(회전 위치 인코딩), 정규화/스케일링 전략을 결합해 긴 문맥 안정성을 높입니다.',
+      },
+      {
+        topic: '모델 구조',
+        similarity: '둘 다 Attention과 MLP, 잔차 연결이 활용 된 Transformer 블록 구조를 공유합니다.',
+        difference: 'microgpt는 수천 파라미터·1개 레이어 수준이고, real GPT는 수천억 파라미터·수백 개 레이어로 확장되며 GQA, gated activation, MoE 같은 최적화 블록이 추가됩니다.',
+      },
+      {
+        topic: '학습 방식',
+        similarity: '둘 다 loss를 최소화하도록 역전파와 Adam 계열 optimizer로 파라미터를 업데이트합니다.',
+        difference: 'real GPT는 대규모 pretraining 이후 post-training(SFT, RLHF/RLAIF 계열 preference optimization)을 거쳐 지시 수행 능력·응답 품질·안전성 정렬을 강화합니다.',
+      },
+      {
+        topic: '추론',
+        similarity: '둘 다 autoregressive decoding으로 다음 토큰을 한 스텝씩 생성합니다.',
+        difference: 'real GPT는 대규모 동시 요청을 처리하기 위해 batching, KV cache paging, quantization, speculative decoding, multi-GPU 분산 서빙을 결합한 별도 inference stack이 필요합니다.',
+      },
+    ],
     bgClass: 'bg-white',
   },
 ]
@@ -7564,6 +7605,7 @@ function App() {
   const chapterFiveSection = lessonSections[4]
   const chapterSixSection = lessonSections[5]
   const chapterSevenSection = lessonSections[6]
+  const chapterEightSection = lessonSections[7]
 
   return (
     <div ref={pageRef} className="relative overflow-x-clip bg-neo-cream font-space text-black">
@@ -7579,7 +7621,6 @@ function App() {
       <main>
         <ChapterOneSection
           section={chapterOneSection}
-          takeawayNumber={1}
           dataCloud={<ChapterOneDataCloud names={CHAPTER_ONE_NAMES} reducedMotion={reducedMotion} isMobile={isMobile} />}
         />
 
@@ -7718,6 +7759,8 @@ function App() {
             <ChapterSevenInferenceDemo snapshot={embeddingSnapshot} reducedMotion={reducedMotion} isMobile={isMobile} />
           ) : null}
         </ChapterSevenSection>
+
+        <ChapterEightSection section={chapterEightSection} />
       </main>
 
       <FooterSection />
