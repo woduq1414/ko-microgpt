@@ -23,6 +23,9 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  hyphens: manual;
 }
 
 html,
