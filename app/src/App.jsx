@@ -3314,7 +3314,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
             </button>
             <p className="attention-nav-pill">
               <span className="attention-nav-pill-char">{currentExampleName}</span>
-              <span className="attention-nav-pill-meta">HEAD 0</span>
+              <span className="attention-nav-pill-meta">{`POS 0 ~ ${Math.max(0, modelSequence.length - 1)}`}</span>
             </p>
             <button
               type="button"
@@ -3941,7 +3941,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
   const mlpFc2 = snapshot?.mlp?.mlp_fc2
   const lmHead = snapshot?.lm_head
   const [exampleNameIndex, setExampleNameIndex] = useState(0)
+  const [targetIndex, setTargetIndex] = useState(0)
   const [animationTick, setAnimationTick] = useState(1)
+  const [isAnimating, setIsAnimating] = useState(false)
   const [skipAnimations, setSkipAnimations] = useState(false)
   const [revealedPosColumns, setRevealedPosColumns] = useState([])
   const [revealedTargetRows, setRevealedTargetRows] = useState([])
@@ -4135,6 +4137,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     tokenChars,
     xVectors,
   ])
+  const safeTargetIndex = trainingRows.length ? clamp(targetIndex, 0, trainingRows.length - 1) : 0
 
   const meanLoss = useMemo(() => {
     if (!trainingRows.length) {
@@ -4158,10 +4161,10 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     if (!trainingRows.length) {
       return {
         perPos: [],
-        pos0LogitRows: [],
-        pos0LogitTopEllipsis: false,
-        pos0LogitBottomEllipsis: false,
-        pos0BlockOutputGrad: [],
+        selectedLogitRows: [],
+        selectedLogitTopEllipsis: false,
+        selectedLogitBottomEllipsis: false,
+        selectedBlockOutputGrad: [],
         lmHeadDisplayItems: [],
         absMax: 1e-8,
       }
@@ -4178,14 +4181,14 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       }
     })
 
-    const pos0 = trainingRows[0]
-    if (!pos0) {
+    const selectedRow = trainingRows[safeTargetIndex]
+    if (!selectedRow) {
       return {
         perPos,
-        pos0LogitRows: [],
-        pos0LogitTopEllipsis: false,
-        pos0LogitBottomEllipsis: false,
-        pos0BlockOutputGrad: [],
+        selectedLogitRows: [],
+        selectedLogitTopEllipsis: false,
+        selectedLogitBottomEllipsis: false,
+        selectedBlockOutputGrad: [],
         lmHeadDisplayItems: [],
         absMax: Math.max(
           1e-8,
@@ -4195,24 +4198,24 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       }
     }
 
-    const targetId = Number(pos0.targetTokenId ?? -1)
-    const probs = Array.isArray(pos0.probVector) ? pos0.probVector : []
+    const targetId = Number(selectedRow.targetTokenId ?? -1)
+    const probs = Array.isArray(selectedRow.probVector) ? selectedRow.probVector : []
     const dMean_dLogits = probs.map((prob, tokenId) => {
       const y = tokenId === targetId ? 1 : 0
       return scale * (Number(prob ?? 0) - y)
     })
 
-    const pos0LogitRows = pos0.candidateRows.map((row) => {
+    const selectedLogitRows = selectedRow.candidateRows.map((row) => {
       const grad = Number(dMean_dLogits[row.tokenId] ?? 0)
       return {
         ...row,
         grad,
       }
     })
-    const pos0LogitTopEllipsis = Number(pos0.windowStart ?? 0) > 0
-    const pos0LogitBottomEllipsis = Number(pos0.windowEnd ?? 0) < Number(pos0.sortedTokenIds?.length ?? 0)
+    const selectedLogitTopEllipsis = Number(selectedRow.windowStart ?? 0) > 0
+    const selectedLogitBottomEllipsis = Number(selectedRow.windowEnd ?? 0) < Number(selectedRow.sortedTokenIds?.length ?? 0)
 
-    const pos0BlockOutputGrad = Array.from({ length: nEmbd }, (_, dimIndex) => {
+    const selectedBlockOutputGrad = Array.from({ length: nEmbd }, (_, dimIndex) => {
       return dMean_dLogits.reduce((accumulator, grad, tokenId) => {
         return accumulator + Number(lmHead[tokenId]?.[dimIndex] ?? 0) * Number(grad ?? 0)
       }, 0)
@@ -4237,7 +4240,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         label: getVocabularyTokenLabel(tokenId, tokenChars, bos),
         isTarget: tokenId === targetId,
         values: Array.from({ length: nEmbd }, (_, dimIndex) => {
-          return logitGrad * Number(pos0.blockOutputVector?.[dimIndex] ?? 0)
+          return logitGrad * Number(selectedRow.blockOutputVector?.[dimIndex] ?? 0)
         }),
       })
     })
@@ -4246,8 +4249,8 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       1e-8,
       ...perPos.map((row) => Math.abs(Number(row.dMean_dTargetProb ?? 0))),
       ...perPos.map((row) => Math.abs(Number(row.dMean_dLoss ?? 0))),
-      ...pos0LogitRows.map((row) => Math.abs(Number(row.grad ?? 0))),
-      ...pos0BlockOutputGrad.map((value) => Math.abs(Number(value ?? 0))),
+      ...selectedLogitRows.map((row) => Math.abs(Number(row.grad ?? 0))),
+      ...selectedBlockOutputGrad.map((value) => Math.abs(Number(value ?? 0))),
       ...lmHeadDisplayItems.flatMap((item) =>
         item.type === 'column' ? item.values.map((value) => Math.abs(Number(value ?? 0))) : [],
       ),
@@ -4255,14 +4258,14 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
 
     return {
       perPos,
-      pos0LogitRows,
-      pos0LogitTopEllipsis,
-      pos0LogitBottomEllipsis,
-      pos0BlockOutputGrad,
+      selectedLogitRows,
+      selectedLogitTopEllipsis,
+      selectedLogitBottomEllipsis,
+      selectedBlockOutputGrad,
       lmHeadDisplayItems,
       absMax,
     }
-  }, [bos, lmHead, nEmbd, tokenChars, trainingRows])
+  }, [bos, lmHead, nEmbd, safeTargetIndex, tokenChars, trainingRows])
 
   const sharedGridStyle = useMemo(() => {
     const columnCount = Math.max(1, trainingRows.length)
@@ -4396,15 +4399,15 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         },
       ]),
       {
-        key: 'prob-to-logit-0',
+        key: 'prob-to-logit',
         variant: 'backprop-prob',
-        getFrom: () => backpropProbCardRefs.current[0],
+        getFrom: () => backpropProbCardRefs.current[safeTargetIndex],
         getTo: () => backpropLogitRef.current,
         fromAnchor: { x: 'center', y: 'bottom' },
         toAnchor: { x: 'center', y: 'top' },
       },
       {
-        key: 'logit-to-block-0',
+        key: 'logit-to-block',
         variant: 'backprop-vector',
         getFrom: () => backpropLogitRef.current,
         getTo: () => backpropBlockVectorRef.current,
@@ -4412,7 +4415,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         toAnchor: { x: 'center', y: 'top' },
       },
       {
-        key: 'logit-to-lmhead-0',
+        key: 'logit-to-lmhead',
         variant: 'backprop-vector',
         getFrom: () => backpropLogitRef.current,
         getTo: () => backpropLmHeadVectorRef.current,
@@ -4482,6 +4485,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
 
     if (!positionCount) {
       return () => {
+        setIsAnimating(false)
         runSharedCleanup()
       }
     }
@@ -4532,6 +4536,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
 
     if (reducedMotion || skipAnimations) {
       const rafId = window.requestAnimationFrame(() => {
+        setIsAnimating(false)
         setRevealedPosColumns(Array.from({ length: positionCount }, () => true))
         setRevealedTargetRows(Array.from({ length: positionCount }, () => true))
         setRevealedLossCards(Array.from({ length: positionCount }, () => true))
@@ -4551,6 +4556,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
 
     const timeline = gsap.timeline()
     timelineRef.current = timeline
+    timeline.call(() => {
+      setIsAnimating(true)
+    }, null, 0)
 
     const spawnConnector = (fromNode, toNode, startAt, variant = 'loss') => {
       if (!flowLayer || !fromNode || !toNode) {
@@ -4705,9 +4713,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       setIsBackpropLogitVisible(true)
       queuePersistentConnectorRefresh()
     }, null, backpropLogitStart)
-    pulsePersistentConnector('prob-to-logit-0', backpropLogitStart + 0.01)
-    timeline.call(() => probColumnRefs.current[0]?.classList.add('training-prob-col--active'), null, backpropLogitStart + 0.01)
-    timeline.call(() => probColumnRefs.current[0]?.classList.remove('training-prob-col--active'), null, backpropLogitStart + 0.18)
+    pulsePersistentConnector('prob-to-logit', backpropLogitStart + 0.01)
+    timeline.call(() => probColumnRefs.current[safeTargetIndex]?.classList.add('training-prob-col--active'), null, backpropLogitStart + 0.01)
+    timeline.call(() => probColumnRefs.current[safeTargetIndex]?.classList.remove('training-prob-col--active'), null, backpropLogitStart + 0.18)
     timeline.call(() => backpropLogitRef.current?.classList.add('training-backprop-logit--pulse'), null, backpropLogitStart + 0.02)
     timeline.call(() => backpropLogitRef.current?.classList.remove('training-backprop-logit--pulse'), null, backpropLogitStart + 0.2)
 
@@ -4716,8 +4724,8 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       setIsBackpropVectorsVisible(true)
       queuePersistentConnectorRefresh()
     }, null, backpropVectorStart)
-    pulsePersistentConnector('logit-to-block-0', backpropVectorStart + 0.01)
-    pulsePersistentConnector('logit-to-lmhead-0', backpropVectorStart + 0.04)
+    pulsePersistentConnector('logit-to-block', backpropVectorStart + 0.01)
+    pulsePersistentConnector('logit-to-lmhead', backpropVectorStart + 0.04)
     timeline.call(() => backpropBlockVectorRef.current?.classList.add('training-backprop-vector--pulse'), null, backpropVectorStart + 0.04)
     timeline.call(() => backpropLmHeadVectorRef.current?.classList.add('training-backprop-vector--pulse'), null, backpropVectorStart + 0.06)
     timeline.call(() => backpropBlockVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + 0.22)
@@ -4727,13 +4735,17 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     timeline.call(() => {
       setIsBackpropOmissionVisible(true)
     }, null, backpropOmissionStart)
+    timeline.call(() => {
+      setIsAnimating(false)
+    }, null, backpropOmissionStart + 0.04)
 
     return () => {
       timeline.kill()
       timelineRef.current = null
+      setIsAnimating(false)
       runSharedCleanup()
     }
-  }, [animationTick, reducedMotion, skipAnimations, trainingRows])
+  }, [animationTick, reducedMotion, safeTargetIndex, skipAnimations, trainingRows])
 
   if (!isShapeValid) {
     return null
@@ -4759,6 +4771,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     setIsBackpropLogitVisible(false)
     setIsBackpropVectorsVisible(false)
     setIsBackpropOmissionVisible(false)
+    setIsAnimating(false)
   }
 
   const moveExampleName = (direction) => {
@@ -4766,6 +4779,26 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     setExampleNameIndex((prevIndex) => {
       return (prevIndex + direction + CHAPTER_FOUR_EXAMPLE_NAMES.length) % CHAPTER_FOUR_EXAMPLE_NAMES.length
     })
+    setTargetIndex(0)
+    setAnimationTick((prevTick) => prevTick + 1)
+  }
+
+  const moveTargetIndex = (direction) => {
+    const maxIndex = Math.max(0, trainingRows.length - 1)
+    const nextIndex = clamp(targetIndex + direction, 0, maxIndex)
+    if (nextIndex === targetIndex) {
+      return
+    }
+    resetRevealStates()
+    setTargetIndex(nextIndex)
+    setAnimationTick((prevTick) => prevTick + 1)
+  }
+
+  const replayAnimation = () => {
+    if (skipAnimations) {
+      return
+    }
+    resetRevealStates()
     setAnimationTick((prevTick) => prevTick + 1)
   }
 
@@ -4777,29 +4810,59 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
 
   const lmHeadVisibleColumnCount = Math.max(1, backpropData.lmHeadDisplayItems.length)
   const lmHeadGridStyle = { '--training-lmhead-visible-cols': String(lmHeadVisibleColumnCount) }
+  const selectedInputToken = modelSequence[safeTargetIndex] ?? null
 
   return (
     <div className={`training-demo-wrap reveal ${reducedMotion ? 'training-demo-wrap--static' : ''}`}>
-      <div className="training-controls">
-        <div className="training-nav">
-          <p className="training-nav-title">예시 이름</p>
-          <div className="training-nav-inner">
-            <button type="button" className="training-nav-arrow" onClick={() => moveExampleName(-1)} aria-label="이전 예시 이름 보기">
-              <span className="training-nav-arrow-shape training-nav-arrow-shape-left" />
+      <div className="attention-controls">
+        <div className="attention-nav">
+          <p className="attention-nav-title">예시 이름</p>
+          <div className="attention-nav-inner">
+            <button type="button" className="attention-nav-arrow" onClick={() => moveExampleName(-1)} aria-label="이전 예시 이름 보기">
+              <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
             </button>
-            <p className="training-nav-pill">
-              <span className="training-nav-pill-char">{currentExampleName}</span>
-              <span className="training-nav-pill-meta">{`POS 0 ~ ${Math.max(0, trainingRows.length - 1)}`}</span>
+            <p className="attention-nav-pill">
+              <span className="attention-nav-pill-char">{currentExampleName}</span>
+              <span className="attention-nav-pill-meta">{`POS 0 ~ ${Math.max(0, trainingRows.length - 1)}`}</span>
             </p>
-            <button type="button" className="training-nav-arrow" onClick={() => moveExampleName(1)} aria-label="다음 예시 이름 보기">
-              <span className="training-nav-arrow-shape training-nav-arrow-shape-right" />
+            <button type="button" className="attention-nav-arrow" onClick={() => moveExampleName(1)} aria-label="다음 예시 이름 보기">
+              <span className="attention-nav-arrow-shape attention-nav-arrow-shape-right" />
+            </button>
+          </div>
+        </div>
+
+        <div className="attention-nav">
+          <p className="attention-nav-title">타겟 인덱스</p>
+          <div className="attention-nav-inner">
+            <button type="button" className="attention-nav-arrow" onClick={() => moveTargetIndex(-1)} aria-label="이전 타겟 인덱스 보기">
+              <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
+            </button>
+            <p className="attention-nav-pill">
+              <span className="attention-nav-pill-char">{`POS ${safeTargetIndex}`}</span>
+              <span className="attention-nav-pill-meta">
+                {selectedInputToken ? `${selectedInputToken.label} · ID ${selectedInputToken.tokenId}` : 'N/A'}
+              </span>
+            </p>
+            <button type="button" className="attention-nav-arrow" onClick={() => moveTargetIndex(1)} aria-label="다음 타겟 인덱스 보기">
+              <span className="attention-nav-arrow-shape attention-nav-arrow-shape-right" />
             </button>
           </div>
         </div>
 
         <button
           type="button"
-          className={`training-skip-btn ${skipAnimations ? 'training-skip-btn--active' : ''}`}
+          className={`attention-replay-btn ${isAnimating ? 'attention-replay-btn--active' : ''}`}
+          onClick={replayAnimation}
+          aria-label="Chapter 5 애니메이션 다시 재생"
+          aria-disabled={skipAnimations}
+          disabled={skipAnimations}
+        >
+          {isAnimating ? 'PLAYING...' : 'REPLAY'}
+        </button>
+
+        <button
+          type="button"
+          className={`attention-skip-btn ${skipAnimations ? 'attention-skip-btn--active' : ''}`}
           onClick={toggleSkipAnimations}
           aria-label="Chapter 5 애니메이션 생략 모드 토글"
           aria-pressed={skipAnimations}
@@ -5003,12 +5066,12 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         <div
           ref={backpropLogitRef}
           className={`training-backprop-logit training-backprop-node ${isBackpropLogitVisible ? '' : 'training-backprop-logit--hidden'}`.trim()}
-          aria-label="Logit Gradient (POS 0)"
+          aria-label={`Logit Gradient (POS ${safeTargetIndex})`}
         >
-          <p className="training-backprop-label">Logit Gradient (POS 0)</p>
+          <p className="training-backprop-label">{`Logit Gradient (POS ${safeTargetIndex})`}</p>
           <div className="training-backprop-logit-list">
-            {backpropData.pos0LogitTopEllipsis ? <p className={`training-backprop-ellipsis ${valueTextClass}`}>...</p> : null}
-            {backpropData.pos0LogitRows.map((row) => {
+            {backpropData.selectedLogitTopEllipsis ? <p className={`training-backprop-ellipsis ${valueTextClass}`}>...</p> : null}
+            {backpropData.selectedLogitRows.map((row) => {
               const ratio = clamp(Math.abs(Number(row.grad ?? 0)) / Math.max(backpropData.absMax, 1e-8), 0, 1)
               return (
                 <article
@@ -5029,7 +5092,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
                 </article>
               )
             })}
-            {backpropData.pos0LogitBottomEllipsis ? <p className={`training-backprop-ellipsis ${valueTextClass}`}>...</p> : null}
+            {backpropData.selectedLogitBottomEllipsis ? <p className={`training-backprop-ellipsis ${valueTextClass}`}>...</p> : null}
           </div>
         </div>
 
@@ -5038,9 +5101,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
             ref={backpropBlockVectorRef}
             className={`training-backprop-vector-card ${isBackpropVectorsVisible ? '' : 'training-backprop-vector-card--hidden'}`.trim()}
           >
-            <p className="training-backprop-label">Transformer Block Output Gradient</p>
+            <p className="training-backprop-label">{`Transformer Block Output Gradient (POS ${safeTargetIndex})`}</p>
             <div className="training-backprop-vector-lines">
-              {backpropData.pos0BlockOutputGrad.map((value, dimIndex) => {
+              {backpropData.selectedBlockOutputGrad.map((value, dimIndex) => {
                 const ratio = clamp(Math.abs(Number(value ?? 0)) / Math.max(backpropData.absMax, 1e-8), 0, 1)
                 return (
                   <div key={`backprop-block-${dimIndex}`} className="training-backprop-vector-line">
@@ -5066,7 +5129,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
               isBackpropVectorsVisible ? '' : 'training-backprop-vector-card--hidden'
             }`.trim()}
           >
-            <p className="training-backprop-label">LM Head Parameter Gradient (Matrix Slice)</p>
+            <p className="training-backprop-label">{`LM Head Parameter Gradient (Matrix Slice, POS ${safeTargetIndex})`}</p>
             <div className="training-backprop-lmhead-header" style={lmHeadGridStyle}>
               <span className={`training-backprop-lmhead-corner ${valueTextClass}`}>DIM</span>
               {backpropData.lmHeadDisplayItems.map((item) => {
