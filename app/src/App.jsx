@@ -3947,10 +3947,23 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
   const [revealedTargetRows, setRevealedTargetRows] = useState([])
   const [revealedLossCards, setRevealedLossCards] = useState([])
   const [isMeanVisible, setIsMeanVisible] = useState(false)
+  const [revealedBackpropLossCards, setRevealedBackpropLossCards] = useState([])
+  const [revealedBackpropProbCards, setRevealedBackpropProbCards] = useState([])
+  const [isBackpropLogitVisible, setIsBackpropLogitVisible] = useState(false)
+  const [isBackpropVectorsVisible, setIsBackpropVectorsVisible] = useState(false)
+  const [isBackpropOmissionVisible, setIsBackpropOmissionVisible] = useState(false)
   const probColumnRefs = useRef([])
   const targetRowRefs = useRef([])
   const lossCardRefs = useRef([])
   const meanCardRef = useRef(null)
+  const backpropLossCardRefs = useRef([])
+  const backpropProbCardRefs = useRef([])
+  const backpropLogitRef = useRef(null)
+  const backpropBlockVectorRef = useRef(null)
+  const backpropLmHeadVectorRef = useRef(null)
+  const backpropLossScrollRef = useRef(null)
+  const backpropProbScrollRef = useRef(null)
+  const backpropVectorRowRef = useRef(null)
   const timelineRef = useRef(null)
   const flowLayerRef = useRef(null)
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
@@ -4008,21 +4021,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     })
 
     const sequence = [
-      {
-        id: 'bos',
-        tokenId: bos,
-        label: '[BOS]',
-        position: 0,
-        isBos: true,
-      },
+      { id: 'bos', tokenId: bos, label: '[BOS]', position: 0, isBos: true },
       ...phonemeTokens,
-      {
-        id: 'bos-end',
-        tokenId: bos,
-        label: '[BOS]',
-        position: phonemeTokens.length + 1,
-        isBos: true,
-      },
+      { id: 'bos-end', tokenId: bos, label: '[BOS]', position: phonemeTokens.length + 1, isBos: true },
     ]
 
     return sequence.slice(0, Math.min(blockSize, sequence.length))
@@ -4032,9 +4033,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     return modelSequence.map((item) => {
       const tokenRow = wte[item.tokenId] ?? []
       const positionRow = wpe[item.position] ?? []
-      const sumVector = Array.from({ length: nEmbd }, (_, index) => {
-        return Number(tokenRow[index] ?? 0) + Number(positionRow[index] ?? 0)
-      })
+      const sumVector = Array.from({ length: nEmbd }, (_, index) => Number(tokenRow[index] ?? 0) + Number(positionRow[index] ?? 0))
       return rmsNormVector(sumVector)
     })
   }, [modelSequence, nEmbd, wpe, wte])
@@ -4067,16 +4066,12 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
 
       const xAttnVector = headOutputs.flat()
       const mhaOutputVector = matVec(xAttnVector, attnWo)
-      const residualVector = currentXVector.map((value, dimIndex) => {
-        return Number(value ?? 0) + Number(mhaOutputVector[dimIndex] ?? 0)
-      })
+      const residualVector = currentXVector.map((value, dimIndex) => Number(value ?? 0) + Number(mhaOutputVector[dimIndex] ?? 0))
       const xNormVector = rmsNormVector(residualVector)
       const mlpHiddenVector = matVec(xNormVector, mlpFc1)
       const mlpReluVector = mlpHiddenVector.map((value) => Math.max(0, Number(value ?? 0)))
       const mlpLinearVector = matVec(mlpReluVector, mlpFc2)
-      const blockOutputVector = residualVector.map((value, dimIndex) => {
-        return Number(value ?? 0) + Number(mlpLinearVector[dimIndex] ?? 0)
-      })
+      const blockOutputVector = residualVector.map((value, dimIndex) => Number(value ?? 0) + Number(mlpLinearVector[dimIndex] ?? 0))
       const logitsVector = matVec(blockOutputVector, lmHead)
       const probVector = softmaxNumbers(logitsVector)
 
@@ -4107,6 +4102,11 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         targetLabel: getVocabularyTokenLabel(targetTokenId, tokenChars, bos),
         targetProb,
         tokenLoss: -Math.log(Math.max(targetProb, 1e-12)),
+        probVector,
+        blockOutputVector,
+        sortedTokenIds,
+        windowStart,
+        windowEnd,
         candidateRows: windowTokenIds.map((tokenId, offset) => ({
           tokenId,
           label: getVocabularyTokenLabel(tokenId, tokenChars, bos),
@@ -4154,6 +4154,116 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     return { min, max, span: max - min }
   }, [trainingRows])
 
+  const backpropData = useMemo(() => {
+    if (!trainingRows.length) {
+      return {
+        perPos: [],
+        pos0LogitRows: [],
+        pos0LogitTopEllipsis: false,
+        pos0LogitBottomEllipsis: false,
+        pos0BlockOutputGrad: [],
+        lmHeadDisplayItems: [],
+        absMax: 1e-8,
+      }
+    }
+
+    const positionCount = trainingRows.length
+    const scale = 1 / positionCount
+    const perPos = trainingRows.map((row) => {
+      const targetProb = Math.max(Number(row.targetProb ?? 0), 1e-12)
+      return {
+        pos: row.pos,
+        dMean_dLoss: scale,
+        dMean_dTargetProb: -(scale / targetProb),
+      }
+    })
+
+    const pos0 = trainingRows[0]
+    if (!pos0) {
+      return {
+        perPos,
+        pos0LogitRows: [],
+        pos0LogitTopEllipsis: false,
+        pos0LogitBottomEllipsis: false,
+        pos0BlockOutputGrad: [],
+        lmHeadDisplayItems: [],
+        absMax: Math.max(
+          1e-8,
+          ...perPos.map((row) => Math.abs(Number(row.dMean_dTargetProb ?? 0))),
+          ...perPos.map((row) => Math.abs(Number(row.dMean_dLoss ?? 0))),
+        ),
+      }
+    }
+
+    const targetId = Number(pos0.targetTokenId ?? -1)
+    const probs = Array.isArray(pos0.probVector) ? pos0.probVector : []
+    const dMean_dLogits = probs.map((prob, tokenId) => {
+      const y = tokenId === targetId ? 1 : 0
+      return scale * (Number(prob ?? 0) - y)
+    })
+
+    const pos0LogitRows = pos0.candidateRows.map((row) => {
+      const grad = Number(dMean_dLogits[row.tokenId] ?? 0)
+      return {
+        ...row,
+        grad,
+      }
+    })
+    const pos0LogitTopEllipsis = Number(pos0.windowStart ?? 0) > 0
+    const pos0LogitBottomEllipsis = Number(pos0.windowEnd ?? 0) < Number(pos0.sortedTokenIds?.length ?? 0)
+
+    const pos0BlockOutputGrad = Array.from({ length: nEmbd }, (_, dimIndex) => {
+      return dMean_dLogits.reduce((accumulator, grad, tokenId) => {
+        return accumulator + Number(lmHead[tokenId]?.[dimIndex] ?? 0) * Number(grad ?? 0)
+      }, 0)
+    })
+
+    const visibleTokenIds = [...new Set([0, targetId, dMean_dLogits.length - 1].filter((tokenId) => tokenId >= 0 && tokenId < dMean_dLogits.length))].sort(
+      (left, right) => left - right,
+    )
+    const lmHeadDisplayItems = []
+    visibleTokenIds.forEach((tokenId, index) => {
+      if (index > 0 && tokenId - visibleTokenIds[index - 1] > 1) {
+        lmHeadDisplayItems.push({
+          type: 'ellipsis',
+          key: `lmhead-gap-${visibleTokenIds[index - 1]}-${tokenId}`,
+        })
+      }
+      const logitGrad = Number(dMean_dLogits[tokenId] ?? 0)
+      lmHeadDisplayItems.push({
+        type: 'column',
+        key: `lmhead-col-${tokenId}`,
+        tokenId,
+        label: getVocabularyTokenLabel(tokenId, tokenChars, bos),
+        isTarget: tokenId === targetId,
+        values: Array.from({ length: nEmbd }, (_, dimIndex) => {
+          return logitGrad * Number(pos0.blockOutputVector?.[dimIndex] ?? 0)
+        }),
+      })
+    })
+
+    const absMax = Math.max(
+      1e-8,
+      ...perPos.map((row) => Math.abs(Number(row.dMean_dTargetProb ?? 0))),
+      ...perPos.map((row) => Math.abs(Number(row.dMean_dLoss ?? 0))),
+      ...pos0LogitRows.map((row) => Math.abs(Number(row.grad ?? 0))),
+      ...pos0BlockOutputGrad.map((value) => Math.abs(Number(value ?? 0))),
+      ...lmHeadDisplayItems.flatMap((item) =>
+        item.type === 'column' ? item.values.map((value) => Math.abs(Number(value ?? 0))) : [],
+      ),
+    )
+
+    return {
+      perPos,
+      pos0LogitRows,
+      pos0LogitTopEllipsis,
+      pos0LogitBottomEllipsis,
+      pos0BlockOutputGrad,
+      lmHeadDisplayItems,
+      absMax,
+    }
+  }, [bos, lmHead, nEmbd, tokenChars, trainingRows])
+
   const sharedGridStyle = useMemo(() => {
     const columnCount = Math.max(1, trainingRows.length)
     const style = { '--training-col-count': String(columnCount) }
@@ -4171,18 +4281,198 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
   useLayoutEffect(() => {
     const positionCount = trainingRows.length
     const flowLayer = flowLayerRef.current
+    const backpropLossScrollNode = backpropLossScrollRef.current
+    const backpropProbScrollNode = backpropProbScrollRef.current
+    const backpropVectorRowNode = backpropVectorRowRef.current
+    const backpropScrollNodes = [
+      backpropLossScrollNode,
+      backpropProbScrollNode,
+      backpropVectorRowNode,
+    ].filter(Boolean)
     const createdFlowNodes = []
+    const persistentBackpropConnectors = new Map()
+    const persistentBackpropDots = new Map()
+    let geometryRafId = null
+    let resizeObserver = null
 
     const clearPulseClasses = () => {
       probColumnRefs.current.forEach((node) => node?.classList.remove('training-prob-col--active'))
       targetRowRefs.current.forEach((node) => node?.classList.remove('training-prob-row--pulse'))
       lossCardRefs.current.forEach((node) => node?.classList.remove('training-loss-card--pulse'))
       meanCardRef.current?.classList.remove('training-mean-card--pulse')
+      backpropLossCardRefs.current.forEach((node) => node?.classList.remove('training-backprop-card--pulse'))
+      backpropProbCardRefs.current.forEach((node) => node?.classList.remove('training-backprop-card--pulse'))
+      backpropLogitRef.current?.classList.remove('training-backprop-logit--pulse')
+      backpropBlockVectorRef.current?.classList.remove('training-backprop-vector--pulse')
+      backpropLmHeadVectorRef.current?.classList.remove('training-backprop-vector--pulse')
+      flowLayer?.querySelectorAll('.training-flow-line--pulse').forEach((line) => {
+        line.classList.remove('training-flow-line--pulse')
+        gsap.set(line, { scaleX: 1 })
+      })
+      persistentBackpropDots.forEach((dot) => {
+        dot.classList.remove('training-flow-dot--active')
+        gsap.killTweensOf(dot)
+        gsap.set(dot, { opacity: 0, x: 0 })
+      })
     }
+
     const clearFlowLayer = () => {
       if (flowLayer) {
         flowLayer.innerHTML = ''
       }
+      persistentBackpropConnectors.clear()
+      persistentBackpropDots.clear()
+    }
+
+    const resolveAnchorPoint = (rect, anchor) => {
+      const x = anchor.x === 'left' ? rect.left : anchor.x === 'right' ? rect.right : rect.left + rect.width * 0.5
+      const y = anchor.y === 'top' ? rect.top : anchor.y === 'bottom' ? rect.bottom : rect.top + rect.height * 0.5
+      return { x, y }
+    }
+
+    const getAnchoredConnectorGeometry = (fromNode, toNode, fromAnchor, toAnchor) => {
+      if (!flowLayer || !fromNode || !toNode) {
+        return null
+      }
+      const flowRect = flowLayer.getBoundingClientRect()
+      const fromRect = fromNode.getBoundingClientRect()
+      const toRect = toNode.getBoundingClientRect()
+      const fromPoint = resolveAnchorPoint(fromRect, fromAnchor)
+      const toPoint = resolveAnchorPoint(toRect, toAnchor)
+      const fromX = fromPoint.x - flowRect.left
+      const fromY = fromPoint.y - flowRect.top
+      const toX = toPoint.x - flowRect.left
+      const toY = toPoint.y - flowRect.top
+      const distance = Math.hypot(toX - fromX, toY - fromY)
+      const angle = (Math.atan2(toY - fromY, toX - fromX) * 180) / Math.PI
+      return { fromX, fromY, distance, angle }
+    }
+
+    const getForwardConnectorGeometry = (fromNode, toNode) => {
+      if (!flowLayer || !fromNode || !toNode) {
+        return null
+      }
+      const flowRect = flowLayer.getBoundingClientRect()
+      const fromRect = fromNode.getBoundingClientRect()
+      const toRect = toNode.getBoundingClientRect()
+      const fromX = fromRect.left + fromRect.width * 0.86 - flowRect.left
+      const fromY = fromRect.top + fromRect.height * 0.5 - flowRect.top
+      const toX = toRect.left + toRect.width * 0.5 - flowRect.left
+      const toY = toRect.top + toRect.height * 0.5 - flowRect.top
+      const distance = Math.hypot(toX - fromX, toY - fromY)
+      const angle = (Math.atan2(toY - fromY, toX - fromX) * 180) / Math.PI
+      return { fromX, fromY, distance, angle }
+    }
+
+    const placeConnector = (line, fromNode, toNode, fromAnchor = { x: 'center', y: 'bottom' }, toAnchor = { x: 'center', y: 'top' }) => {
+      const geometry = getAnchoredConnectorGeometry(fromNode, toNode, fromAnchor, toAnchor)
+      if (!line || !geometry) {
+        return false
+      }
+      line.style.left = `${geometry.fromX}px`
+      line.style.top = `${geometry.fromY}px`
+      line.style.width = `${geometry.distance}px`
+      line.style.transform = `translateY(-50%) rotate(${geometry.angle}deg)`
+      return true
+    }
+
+    const backpropDescriptors = [
+      ...trainingRows.flatMap((_, rowIndex) => [
+        {
+          key: `mean-to-loss-${rowIndex}`,
+          variant: 'backprop-mean',
+          getFrom: () => meanCardRef.current,
+          getTo: () => backpropLossCardRefs.current[rowIndex],
+          fromAnchor: { x: 'center', y: 'bottom' },
+          toAnchor: { x: 'center', y: 'top' },
+        },
+        {
+          key: `loss-to-prob-${rowIndex}`,
+          variant: 'backprop-prob',
+          getFrom: () => backpropLossCardRefs.current[rowIndex],
+          getTo: () => backpropProbCardRefs.current[rowIndex],
+          fromAnchor: { x: 'center', y: 'bottom' },
+          toAnchor: { x: 'center', y: 'top' },
+        },
+      ]),
+      {
+        key: 'prob-to-logit-0',
+        variant: 'backprop-prob',
+        getFrom: () => backpropProbCardRefs.current[0],
+        getTo: () => backpropLogitRef.current,
+        fromAnchor: { x: 'center', y: 'bottom' },
+        toAnchor: { x: 'center', y: 'top' },
+      },
+      {
+        key: 'logit-to-block-0',
+        variant: 'backprop-vector',
+        getFrom: () => backpropLogitRef.current,
+        getTo: () => backpropBlockVectorRef.current,
+        fromAnchor: { x: 'center', y: 'bottom' },
+        toAnchor: { x: 'center', y: 'top' },
+      },
+      {
+        key: 'logit-to-lmhead-0',
+        variant: 'backprop-vector',
+        getFrom: () => backpropLogitRef.current,
+        getTo: () => backpropLmHeadVectorRef.current,
+        fromAnchor: { x: 'center', y: 'bottom' },
+        toAnchor: { x: 'center', y: 'top' },
+      },
+    ]
+
+    const refreshPersistentBackpropConnectors = () => {
+      backpropDescriptors.forEach((descriptor) => {
+        const fromNode = descriptor.getFrom()
+        const toNode = descriptor.getTo()
+        if (!flowLayer || !fromNode || !toNode) {
+          return
+        }
+        const existing = persistentBackpropConnectors.get(descriptor.key)
+        if (existing) {
+          placeConnector(existing, fromNode, toNode, descriptor.fromAnchor, descriptor.toAnchor)
+          return
+        }
+        const line = document.createElement('span')
+        line.className = `training-flow-line training-flow-line--${descriptor.variant} training-flow-line--persistent`
+        const dot = document.createElement('span')
+        dot.className = `training-flow-dot training-flow-dot--${descriptor.variant}`
+        line.appendChild(dot)
+        flowLayer.appendChild(line)
+        createdFlowNodes.push(line)
+        persistentBackpropConnectors.set(descriptor.key, line)
+        persistentBackpropDots.set(descriptor.key, dot)
+        placeConnector(line, fromNode, toNode, descriptor.fromAnchor, descriptor.toAnchor)
+      })
+    }
+
+    const queuePersistentConnectorRefresh = () => {
+      if (geometryRafId !== null) {
+        return
+      }
+      geometryRafId = window.requestAnimationFrame(() => {
+        geometryRafId = null
+        refreshPersistentBackpropConnectors()
+      })
+    }
+
+    const cleanupPersistentConnectorListeners = () => {
+      if (geometryRafId !== null) {
+        window.cancelAnimationFrame(geometryRafId)
+        geometryRafId = null
+      }
+      window.removeEventListener('resize', queuePersistentConnectorRefresh)
+      backpropScrollNodes.forEach((node) => {
+        node.removeEventListener('scroll', queuePersistentConnectorRefresh)
+      })
+      resizeObserver?.disconnect()
+      resizeObserver = null
+    }
+
+    const runSharedCleanup = () => {
+      cleanupPersistentConnectorListeners()
+      clearPulseClasses()
+      clearFlowLayer()
     }
 
     timelineRef.current?.kill()
@@ -4192,8 +4482,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
 
     if (!positionCount) {
       return () => {
-        clearPulseClasses()
-        clearFlowLayer()
+        runSharedCleanup()
       }
     }
 
@@ -4201,7 +4490,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       setter((prev) => {
         const previous = Array.isArray(prev) ? prev : []
         const resized =
-          previous.length === positionCount ? [...previous] : Array.from({ length: positionCount }, (_, idx) => Boolean(previous[idx]))
+          previous.length === positionCount
+            ? [...previous]
+            : Array.from({ length: positionCount }, (_, rowIndex) => Boolean(previous[rowIndex]))
         if (index < 0 || index >= positionCount) {
           return previous.length === positionCount ? prev : resized
         }
@@ -4213,17 +4504,48 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       })
     }
 
+    refreshPersistentBackpropConnectors()
+    window.addEventListener('resize', queuePersistentConnectorRefresh)
+    backpropScrollNodes.forEach((node) => {
+      node.addEventListener('scroll', queuePersistentConnectorRefresh, { passive: true })
+    })
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        queuePersistentConnectorRefresh()
+      })
+      const observedNodes = [
+        flowLayer,
+        meanCardRef.current,
+        backpropLogitRef.current,
+        backpropLossScrollNode,
+        backpropProbScrollNode,
+        backpropVectorRowNode,
+        backpropBlockVectorRef.current,
+        backpropLmHeadVectorRef.current,
+      ]
+      observedNodes.forEach((node) => {
+        if (node) {
+          resizeObserver.observe(node)
+        }
+      })
+    }
+
     if (reducedMotion || skipAnimations) {
       const rafId = window.requestAnimationFrame(() => {
         setRevealedPosColumns(Array.from({ length: positionCount }, () => true))
         setRevealedTargetRows(Array.from({ length: positionCount }, () => true))
         setRevealedLossCards(Array.from({ length: positionCount }, () => true))
         setIsMeanVisible(true)
+        setRevealedBackpropLossCards(Array.from({ length: positionCount }, () => true))
+        setRevealedBackpropProbCards(Array.from({ length: positionCount }, () => true))
+        setIsBackpropLogitVisible(true)
+        setIsBackpropVectorsVisible(true)
+        setIsBackpropOmissionVisible(true)
+        queuePersistentConnectorRefresh()
       })
       return () => {
         window.cancelAnimationFrame(rafId)
-        clearPulseClasses()
-        clearFlowLayer()
+        runSharedCleanup()
       }
     }
 
@@ -4235,22 +4557,17 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         return
       }
 
-      const flowRect = flowLayer.getBoundingClientRect()
-      const fromRect = fromNode.getBoundingClientRect()
-      const toRect = toNode.getBoundingClientRect()
-      const fromX = fromRect.left + fromRect.width * 0.86 - flowRect.left
-      const fromY = fromRect.top + fromRect.height * 0.5 - flowRect.top
-      const toX = toRect.left + toRect.width * 0.5 - flowRect.left
-      const toY = toRect.top + toRect.height * 0.5 - flowRect.top
-      const distance = Math.hypot(toX - fromX, toY - fromY)
-      const angle = (Math.atan2(toY - fromY, toX - fromX) * 180) / Math.PI
+      const geometry = getForwardConnectorGeometry(fromNode, toNode)
+      if (!geometry) {
+        return
+      }
 
       const line = document.createElement('span')
       line.className = `training-flow-line training-flow-line--${variant}`
-      line.style.left = `${fromX}px`
-      line.style.top = `${fromY}px`
-      line.style.width = `${distance}px`
-      line.style.transform = `translateY(-50%) rotate(${angle}deg)`
+      line.style.left = `${geometry.fromX}px`
+      line.style.top = `${geometry.fromY}px`
+      line.style.width = `${geometry.distance}px`
+      line.style.transform = `translateY(-50%) rotate(${geometry.angle}deg)`
       flowLayer.appendChild(line)
       createdFlowNodes.push(line)
 
@@ -4261,6 +4578,50 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         startAt,
       )
       timeline.to(line, { opacity: 0, duration: 0.16, ease: 'power2.in' }, startAt + 0.12)
+    }
+
+    const pulsePersistentConnector = (lineKey, startAt) => {
+      const line = persistentBackpropConnectors.get(lineKey)
+      const dot = persistentBackpropDots.get(lineKey)
+      if (!line) {
+        return
+      }
+      timeline.call(() => {
+        line.classList.add('training-flow-line--pulse')
+        if (dot) {
+          dot.classList.add('training-flow-dot--active')
+          gsap.killTweensOf(dot)
+          gsap.set(dot, { x: 0, opacity: 1 })
+          const travel = Math.max(0, line.getBoundingClientRect().width - 2)
+          gsap.to(dot, {
+            x: travel,
+            duration: 0.22,
+            ease: 'power1.inOut',
+            overwrite: 'auto',
+          })
+        }
+        gsap.fromTo(
+          line,
+          { scaleX: 1 },
+          {
+            scaleX: 1.08,
+            duration: 0.1,
+            yoyo: true,
+            repeat: 1,
+            ease: 'power2.out',
+            overwrite: 'auto',
+          },
+        )
+      }, null, startAt)
+      timeline.call(() => {
+        line.classList.remove('training-flow-line--pulse')
+        gsap.set(line, { scaleX: 1 })
+        if (dot) {
+          dot.classList.remove('training-flow-dot--active')
+          gsap.killTweensOf(dot)
+          gsap.set(dot, { opacity: 0, x: 0 })
+        }
+      }, null, startAt + 0.22)
     }
 
     trainingRows.forEach((_, rowIndex) => {
@@ -4301,6 +4662,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     const meanStageStart = lossStageStart + trainingRows.length * 0.08 + 0.08
     timeline.call(() => {
       setIsMeanVisible(true)
+      queuePersistentConnectorRefresh()
     }, null, meanStageStart)
 
     trainingRows.forEach((_, rowIndex) => {
@@ -4308,18 +4670,68 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       spawnConnector(lossCardRefs.current[rowIndex], meanCardRef.current, at, 'mean')
     })
 
+    const meanPulseStart = meanStageStart + trainingRows.length * 0.045 + 0.04
     if (meanCardRef.current) {
-      const pulseStart = meanStageStart + trainingRows.length * 0.045 + 0.04
-      timeline.call(() => meanCardRef.current?.classList.add('training-mean-card--pulse'), null, pulseStart)
-      timeline.call(() => meanCardRef.current?.classList.remove('training-mean-card--pulse'), null, pulseStart + 0.2)
+      timeline.call(() => meanCardRef.current?.classList.add('training-mean-card--pulse'), null, meanPulseStart)
+      timeline.call(() => meanCardRef.current?.classList.remove('training-mean-card--pulse'), null, meanPulseStart + 0.2)
     }
+
+    const backpropStart = meanPulseStart + 0.24
+    trainingRows.forEach((_, rowIndex) => {
+      const at = backpropStart + rowIndex * 0.07
+      timeline.call(() => {
+        revealAt(setRevealedBackpropLossCards, rowIndex)
+        queuePersistentConnectorRefresh()
+      }, null, at)
+      pulsePersistentConnector(`mean-to-loss-${rowIndex}`, at + 0.012)
+      timeline.call(() => backpropLossCardRefs.current[rowIndex]?.classList.add('training-backprop-card--pulse'), null, at + 0.012)
+      timeline.call(() => backpropLossCardRefs.current[rowIndex]?.classList.remove('training-backprop-card--pulse'), null, at + 0.18)
+    })
+
+    const backpropProbStart = backpropStart + trainingRows.length * 0.07 + 0.1
+    trainingRows.forEach((_, rowIndex) => {
+      const at = backpropProbStart + rowIndex * 0.07
+      timeline.call(() => {
+        revealAt(setRevealedBackpropProbCards, rowIndex)
+        queuePersistentConnectorRefresh()
+      }, null, at)
+      pulsePersistentConnector(`loss-to-prob-${rowIndex}`, at + 0.012)
+      timeline.call(() => backpropProbCardRefs.current[rowIndex]?.classList.add('training-backprop-card--pulse'), null, at + 0.012)
+      timeline.call(() => backpropProbCardRefs.current[rowIndex]?.classList.remove('training-backprop-card--pulse'), null, at + 0.18)
+    })
+
+    const backpropLogitStart = backpropProbStart + trainingRows.length * 0.07 + 0.12
+    timeline.call(() => {
+      setIsBackpropLogitVisible(true)
+      queuePersistentConnectorRefresh()
+    }, null, backpropLogitStart)
+    pulsePersistentConnector('prob-to-logit-0', backpropLogitStart + 0.01)
+    timeline.call(() => probColumnRefs.current[0]?.classList.add('training-prob-col--active'), null, backpropLogitStart + 0.01)
+    timeline.call(() => probColumnRefs.current[0]?.classList.remove('training-prob-col--active'), null, backpropLogitStart + 0.18)
+    timeline.call(() => backpropLogitRef.current?.classList.add('training-backprop-logit--pulse'), null, backpropLogitStart + 0.02)
+    timeline.call(() => backpropLogitRef.current?.classList.remove('training-backprop-logit--pulse'), null, backpropLogitStart + 0.2)
+
+    const backpropVectorStart = backpropLogitStart + 0.22
+    timeline.call(() => {
+      setIsBackpropVectorsVisible(true)
+      queuePersistentConnectorRefresh()
+    }, null, backpropVectorStart)
+    pulsePersistentConnector('logit-to-block-0', backpropVectorStart + 0.01)
+    pulsePersistentConnector('logit-to-lmhead-0', backpropVectorStart + 0.04)
+    timeline.call(() => backpropBlockVectorRef.current?.classList.add('training-backprop-vector--pulse'), null, backpropVectorStart + 0.04)
+    timeline.call(() => backpropLmHeadVectorRef.current?.classList.add('training-backprop-vector--pulse'), null, backpropVectorStart + 0.06)
+    timeline.call(() => backpropBlockVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + 0.22)
+    timeline.call(() => backpropLmHeadVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + 0.22)
+
+    const backpropOmissionStart = backpropVectorStart + 0.24
+    timeline.call(() => {
+      setIsBackpropOmissionVisible(true)
+    }, null, backpropOmissionStart)
 
     return () => {
       timeline.kill()
       timelineRef.current = null
-      createdFlowNodes.forEach((node) => node.remove())
-      clearPulseClasses()
-      clearFlowLayer()
+      runSharedCleanup()
     }
   }, [animationTick, reducedMotion, skipAnimations, trainingRows])
 
@@ -4336,11 +4748,21 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     )
   }
 
-  const moveExampleName = (direction) => {
-    setRevealedPosColumns(createRevealVector(trainingRows.length))
-    setRevealedTargetRows(createRevealVector(trainingRows.length))
-    setRevealedLossCards(createRevealVector(trainingRows.length))
+  const resetRevealStates = () => {
+    const hiddenMask = createRevealVector(trainingRows.length)
+    setRevealedPosColumns(hiddenMask)
+    setRevealedTargetRows(hiddenMask)
+    setRevealedLossCards(hiddenMask)
     setIsMeanVisible(false)
+    setRevealedBackpropLossCards(hiddenMask)
+    setRevealedBackpropProbCards(hiddenMask)
+    setIsBackpropLogitVisible(false)
+    setIsBackpropVectorsVisible(false)
+    setIsBackpropOmissionVisible(false)
+  }
+
+  const moveExampleName = (direction) => {
+    resetRevealStates()
     setExampleNameIndex((prevIndex) => {
       return (prevIndex + direction + CHAPTER_FOUR_EXAMPLE_NAMES.length) % CHAPTER_FOUR_EXAMPLE_NAMES.length
     })
@@ -4348,13 +4770,13 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
   }
 
   const toggleSkipAnimations = () => {
-    setRevealedPosColumns(createRevealVector(trainingRows.length))
-    setRevealedTargetRows(createRevealVector(trainingRows.length))
-    setRevealedLossCards(createRevealVector(trainingRows.length))
-    setIsMeanVisible(false)
+    resetRevealStates()
     setSkipAnimations((prev) => !prev)
     setAnimationTick((prevTick) => prevTick + 1)
   }
+
+  const lmHeadVisibleColumnCount = Math.max(1, backpropData.lmHeadDisplayItems.length)
+  const lmHeadGridStyle = { '--training-lmhead-visible-cols': String(lmHeadVisibleColumnCount) }
 
   return (
     <div className={`training-demo-wrap reveal ${reducedMotion ? 'training-demo-wrap--static' : ''}`}>
@@ -4409,9 +4831,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
                   <div className="training-prob-row-list">
                     {row.candidateRows.map((candidate) => {
                       const isTargetRow = candidate.isTarget && isTargetVisible
-                    return (
-                      <div
-                        key={`training-candidate-${row.pos}-${candidate.tokenId}`}
+                      return (
+                        <div
+                          key={`training-candidate-${row.pos}-${candidate.tokenId}`}
                           ref={(node) => {
                             if (candidate.isTarget) {
                               targetRowRefs.current[rowIndex] = node
@@ -4457,53 +4879,259 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           <div className="training-loss-grid" style={sharedGridStyle}>
             {trainingRows.map((row, rowIndex) => {
               const isLossVisible = Boolean(revealedLossCards[rowIndex])
-            return (
-              <article
+              return (
+                <article
                   key={`training-loss-${row.pos}`}
                   ref={(node) => {
                     lossCardRefs.current[rowIndex] = node
                   }}
                   className={`training-loss-card ${isLossVisible ? '' : 'training-loss-card--hidden'}`.trim()}
-              >
-                <span className={`training-loss-pos ${valueTextClass}`}>{`POS ${row.pos}`}</span>
-                <span
-                  className={`training-loss-value ${valueTextClass}`}
-                  style={
-                    isLossVisible
-                      ? (() => {
-                          const lossRatio =
-                            lossRange.span < 1e-8 ? 0.5 : clamp((Number(row.tokenLoss ?? 0) - lossRange.min) / lossRange.span, 0, 1)
-                          return {
-                            backgroundColor: interpolateHexColor(
-                              EMBEDDING_NEGATIVE_BASE,
-                              EMBEDDING_NEGATIVE_STRONG,
-                              lossRatio,
-                            ),
-                            color: lossRatio >= 0.78 ? '#fff' : '#000',
-                          }
-                        })()
-                      : undefined
-                  }
                 >
-                  {isLossVisible ? row.tokenLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
-                </span>
-              </article>
+                  <span className={`training-loss-pos ${valueTextClass}`}>{`POS ${row.pos}`}</span>
+                  <span
+                    className={`training-loss-value ${valueTextClass}`}
+                    style={
+                      isLossVisible
+                        ? (() => {
+                            const lossRatio =
+                              lossRange.span < 1e-8 ? 0.5 : clamp((Number(row.tokenLoss ?? 0) - lossRange.min) / lossRange.span, 0, 1)
+                            return {
+                              backgroundColor: interpolateHexColor(EMBEDDING_NEGATIVE_BASE, EMBEDDING_NEGATIVE_STRONG, lossRatio),
+                              color: lossRatio >= 0.78 ? '#fff' : '#000',
+                            }
+                          })()
+                        : undefined
+                    }
+                  >
+                    {isLossVisible ? row.tokenLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                  </span>
+                </article>
               )
             })}
           </div>
         </section>
 
+        <article
+          ref={meanCardRef}
+          className={`training-mean-card ${isMeanVisible ? '' : 'training-mean-card--hidden'}`.trim()}
+          aria-label="평균 loss"
+        >
+          <p className="training-mean-title">MEAN LOSS</p>
+          <p className="training-mean-value">{isMeanVisible ? meanLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}</p>
+        </article>
+
+        <section className="training-backprop-stage training-backprop-stage--loss training-backprop-node" aria-label="Mean Loss to Token Loss Gradient">
+          <p className="training-backprop-label">Mean Loss to Token Loss Gradient</p>
+          <div ref={backpropLossScrollRef} className="training-backprop-scroll training-backprop-scroll--loss">
+            <div className="training-backprop-grid" style={sharedGridStyle}>
+              {backpropData.perPos.map((row, rowIndex) => {
+                const isVisible = Boolean(revealedBackpropLossCards[rowIndex])
+                return (
+                  <article
+                    key={`backprop-loss-${row.pos}`}
+                    ref={(node) => {
+                      backpropLossCardRefs.current[rowIndex] = node
+                    }}
+                    className={`training-backprop-card ${isVisible ? '' : 'training-backprop-card--hidden'}`.trim()}
+                  >
+                    <p className={`training-backprop-card-title ${valueTextClass}`}>{`POS ${row.pos}`}</p>
+                    <div className="training-backprop-card-kv">
+                      <span
+                        className={`training-backprop-v ${valueTextClass}`}
+                        style={
+                          isVisible
+                            ? {
+                                backgroundColor: interpolateHexColor(
+                                  EMBEDDING_POSITIVE_BASE,
+                                  EMBEDDING_POSITIVE_STRONG,
+                                  clamp(Number(row.dMean_dLoss ?? 0) * trainingRows.length, 0, 1),
+                                ),
+                                color: '#000',
+                              }
+                            : undefined
+                        }
+                      >
+                        {isVisible ? Number(row.dMean_dLoss ?? 0).toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                      </span>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="training-backprop-stage training-backprop-stage--prob training-backprop-node" aria-label="Target Probability Gradient">
+          <p className="training-backprop-label">Target Probability Gradient</p>
+          <div ref={backpropProbScrollRef} className="training-backprop-scroll training-backprop-scroll--prob">
+            <div className="training-backprop-grid" style={sharedGridStyle}>
+              {backpropData.perPos.map((row, rowIndex) => {
+                const isVisible = Boolean(revealedBackpropProbCards[rowIndex])
+                const value = Number(row.dMean_dTargetProb ?? 0)
+                const ratio = clamp(Math.abs(value) / Math.max(backpropData.absMax, 1e-8), 0, 1)
+                return (
+                  <article
+                    key={`backprop-prob-${row.pos}`}
+                    ref={(node) => {
+                      backpropProbCardRefs.current[rowIndex] = node
+                    }}
+                    className={`training-backprop-card ${isVisible ? '' : 'training-backprop-card--hidden'}`.trim()}
+                  >
+                    <p className={`training-backprop-card-title ${valueTextClass}`}>{`POS ${row.pos}`}</p>
+                    <div className="training-backprop-card-kv">
+                      <span
+                        className={`training-backprop-v ${valueTextClass}`}
+                        style={
+                          isVisible
+                            ? {
+                                backgroundColor: getHeatColor(value, Math.max(backpropData.absMax, 1e-8)),
+                                color: ratio >= 0.78 ? '#fff' : '#000',
+                              }
+                            : undefined
+                        }
+                      >
+                        {isVisible ? value.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                      </span>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+
+        <div
+          ref={backpropLogitRef}
+          className={`training-backprop-logit training-backprop-node ${isBackpropLogitVisible ? '' : 'training-backprop-logit--hidden'}`.trim()}
+          aria-label="Logit Gradient (POS 0)"
+        >
+          <p className="training-backprop-label">Logit Gradient (POS 0)</p>
+          <div className="training-backprop-logit-list">
+            {backpropData.pos0LogitTopEllipsis ? <p className={`training-backprop-ellipsis ${valueTextClass}`}>...</p> : null}
+            {backpropData.pos0LogitRows.map((row) => {
+              const ratio = clamp(Math.abs(Number(row.grad ?? 0)) / Math.max(backpropData.absMax, 1e-8), 0, 1)
+              return (
+                <article
+                  key={`backprop-logit-${row.tokenId}`}
+                  className={`training-backprop-logit-row ${row.isTarget ? 'training-backprop-logit-row--target' : ''}`.trim()}
+                >
+                  <span className={`training-backprop-logit-rank ${valueTextClass}`}>{`#${Number(row.rank ?? 0) + 1}`}</span>
+                  <span className={`training-backprop-logit-token ${valueTextClass}`}>{`${row.label} · ID ${row.tokenId}`}</span>
+                  <span
+                    className={`training-backprop-logit-value ${valueTextClass}`}
+                    style={{
+                      backgroundColor: getHeatColor(Number(row.grad ?? 0), Math.max(backpropData.absMax, 1e-8)),
+                      color: ratio >= 0.78 ? '#fff' : '#000',
+                    }}
+                  >
+                    {isBackpropLogitVisible ? Number(row.grad ?? 0).toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                  </span>
+                </article>
+              )
+            })}
+            {backpropData.pos0LogitBottomEllipsis ? <p className={`training-backprop-ellipsis ${valueTextClass}`}>...</p> : null}
+          </div>
+        </div>
+
+        <div ref={backpropVectorRowRef} className="training-backprop-vector-row training-backprop-node" aria-label="Backpropagation Vector Gradients">
+          <article
+            ref={backpropBlockVectorRef}
+            className={`training-backprop-vector-card ${isBackpropVectorsVisible ? '' : 'training-backprop-vector-card--hidden'}`.trim()}
+          >
+            <p className="training-backprop-label">Transformer Block Output Gradient</p>
+            <div className="training-backprop-vector-lines">
+              {backpropData.pos0BlockOutputGrad.map((value, dimIndex) => {
+                const ratio = clamp(Math.abs(Number(value ?? 0)) / Math.max(backpropData.absMax, 1e-8), 0, 1)
+                return (
+                  <div key={`backprop-block-${dimIndex}`} className="training-backprop-vector-line">
+                    <span className={`training-backprop-dim ${valueTextClass}`}>{dimIndex}</span>
+                    <span
+                      className={`training-backprop-vector-value ${valueTextClass}`}
+                      style={{
+                        backgroundColor: getHeatColor(Number(value ?? 0), Math.max(backpropData.absMax, 1e-8)),
+                        color: ratio >= 0.78 ? '#fff' : '#000',
+                      }}
+                    >
+                      {isBackpropVectorsVisible ? Number(value ?? 0).toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </article>
+
+          <article
+            ref={backpropLmHeadVectorRef}
+            className={`training-backprop-vector-card training-backprop-vector-card--learnable ${
+              isBackpropVectorsVisible ? '' : 'training-backprop-vector-card--hidden'
+            }`.trim()}
+          >
+            <p className="training-backprop-label">LM Head Parameter Gradient (Matrix Slice)</p>
+            <div className="training-backprop-lmhead-header" style={lmHeadGridStyle}>
+              <span className={`training-backprop-lmhead-corner ${valueTextClass}`}>DIM</span>
+              {backpropData.lmHeadDisplayItems.map((item) => {
+                if (item.type === 'ellipsis') {
+                  return (
+                    <span key={item.key} className={`training-backprop-lmhead-head training-backprop-lmhead-head--ellipsis ${valueTextClass}`}>
+                      ...
+                    </span>
+                  )
+                }
+                return (
+                  <span
+                    key={item.key}
+                    className={`training-backprop-lmhead-head ${item.isTarget ? 'training-backprop-lmhead-head--target' : ''} ${valueTextClass}`.trim()}
+                    title={`token #${item.tokenId} · ${item.label}`}
+                  >
+                    {item.isTarget ? `${item.label} · ID ${item.tokenId}` : `ID ${item.tokenId}`}
+                  </span>
+                )
+              })}
+            </div>
+
+            <div className="training-backprop-lmhead-rows">
+              {Array.from({ length: nEmbd }, (_, dimIndex) => {
+                return (
+                  <div key={`backprop-lmhead-row-${dimIndex}`} className="training-backprop-lmhead-row" style={lmHeadGridStyle}>
+                    <span className={`training-backprop-dim ${valueTextClass}`}>{dimIndex}</span>
+                    {backpropData.lmHeadDisplayItems.map((item) => {
+                      if (item.type === 'ellipsis') {
+                        return (
+                          <span key={`${item.key}-${dimIndex}`} className={`training-backprop-lmhead-gap ${valueTextClass}`}>
+                            ...
+                          </span>
+                        )
+                      }
+                      const value = Number(item.values?.[dimIndex] ?? 0)
+                      const ratio = clamp(Math.abs(value) / Math.max(backpropData.absMax, 1e-8), 0, 1)
+                      return (
+                        <span
+                          key={`${item.key}-${dimIndex}`}
+                          className={`training-backprop-vector-value ${
+                            item.isTarget ? 'training-backprop-vector-value--target-col' : ''
+                          } ${valueTextClass}`.trim()}
+                          style={{
+                            backgroundColor: getHeatColor(value, Math.max(backpropData.absMax, 1e-8)),
+                            color: ratio >= 0.78 ? '#fff' : '#000',
+                          }}
+                        >
+                          {isBackpropVectorsVisible ? value.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+          </article>
+        </div>
+
+        <p className={`training-backprop-omission training-backprop-node ${isBackpropOmissionVisible ? '' : 'training-backprop-omission--hidden'}`.trim()}>
+          ... 나머지 파라미터 gradient 계산은 동일한 체인 규칙으로 생략 ...
+        </p>
+
         <div ref={flowLayerRef} className="training-flow-layer" aria-hidden="true" />
       </div>
-
-      <article
-        ref={meanCardRef}
-        className={`training-mean-card ${isMeanVisible ? '' : 'training-mean-card--hidden'}`.trim()}
-        aria-label="평균 loss"
-      >
-        <p className="training-mean-title">MEAN LOSS</p>
-        <p className="training-mean-value">{isMeanVisible ? meanLoss.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}</p>
-      </article>
     </div>
   )
 }
