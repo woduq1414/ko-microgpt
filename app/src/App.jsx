@@ -5700,6 +5700,35 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
   const parameterOptions = useMemo(() => {
     return Array.isArray(trace?.parameter_options) ? trace.parameter_options : []
   }, [trace])
+  const localizedParameterOptions = useMemo(() => {
+    const rolePrefixes = [
+      ['초성', 'initial'],
+      ['중성', 'medial'],
+      ['종성', 'final'],
+      ['기타', 'other'],
+      ['Initial', 'initial'],
+      ['Medial', 'medial'],
+      ['Final', 'final'],
+      ['Other', 'other'],
+    ]
+
+    return parameterOptions.map((option) => {
+      const rawLabel = typeof option?.label === 'string' ? option.label : ''
+      let localizedLabel = rawLabel
+
+      for (const [prefix, roleKey] of rolePrefixes) {
+        if (rawLabel === prefix || rawLabel.startsWith(`${prefix} `)) {
+          localizedLabel = `${getRoleLabel(roleKey, copy.roles)}${rawLabel.slice(prefix.length)}`
+          break
+        }
+      }
+
+      return {
+        ...option,
+        localizedLabel,
+      }
+    })
+  }, [copy.roles, parameterOptions])
   const stepRecords = useMemo(() => {
     return Array.isArray(trace?.steps) ? trace.steps : []
   }, [trace])
@@ -5728,7 +5757,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
 
   const maxTraceStep = Math.max(0, stepRecords.length - 1)
   const safeTargetStepOptionIndex = clamp(targetStepOptionIndex, 0, Math.max(0, stepOptions.length - 1))
-  const safeSelectedParameterIndex = clamp(selectedParameterIndex, 0, Math.max(0, parameterOptions.length - 1))
+  const safeSelectedParameterIndex = clamp(selectedParameterIndex, 0, Math.max(0, localizedParameterOptions.length - 1))
   const targetStepRaw = Number(stepOptions[safeTargetStepOptionIndex] ?? CHAPTER_SIX_DEFAULT_STEP_OPTIONS[0])
   const targetStep = clamp(targetStepRaw, 0, maxTraceStep)
   const safeCurrentStep = clamp(currentStep, 0, targetStep)
@@ -5765,7 +5794,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
     }
   }, [hasStarted, isPlaying, reducedMotion, safeCurrentStep, targetStep])
 
-  const selectedParameter = parameterOptions[safeSelectedParameterIndex]
+  const selectedParameter = localizedParameterOptions[safeSelectedParameterIndex]
   const currentRecord = stepRecords[safeCurrentStep] ?? stepRecords[0]
   const selectedParameterRecord =
     selectedParameter && currentRecord?.params && typeof currentRecord.params === 'object'
@@ -5798,12 +5827,12 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
   }
 
   const moveParameter = (direction) => {
-    if (!parameterOptions.length) {
+    if (!localizedParameterOptions.length) {
       return
     }
     setSelectedParameterIndex((previous) => {
-      const safePrevious = clamp(previous, 0, Math.max(0, parameterOptions.length - 1))
-      return (safePrevious + direction + parameterOptions.length) % parameterOptions.length
+      const safePrevious = clamp(previous, 0, Math.max(0, localizedParameterOptions.length - 1))
+      return (safePrevious + direction + localizedParameterOptions.length) % localizedParameterOptions.length
     })
   }
 
@@ -6121,7 +6150,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
     }
   }, [chapter6IsLearningRateHelpOpen])
 
-  if (!parameterOptions.length || !stepRecords.length) {
+  if (!localizedParameterOptions.length || !stepRecords.length) {
     return (
       <div className="token-state-card reveal">
         <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING TRACE</p>
@@ -6344,7 +6373,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
                     <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-left" />
                   </button>
                   <p className="chapter-six-param-pill">
-                    <span className="chapter-six-param-pill-char">{selectedParameter?.label ?? 'N/A'}</span>
+                    <span className="chapter-six-param-pill-char">{selectedParameter?.localizedLabel ?? selectedParameter?.label ?? 'N/A'}</span>
                     <span className="chapter-six-param-pill-meta">
                       {selectedParameter ? `${selectedParameter.matrix}[${selectedParameter.row_index}]` : ''}
                     </span>
