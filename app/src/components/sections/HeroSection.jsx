@@ -32,7 +32,7 @@ function HeroSection() {
   }, [isProjectInfoOpen])
 
   return (
-    <header className="snap-section relative min-h-screen border-b-8 border-black bg-neo-cream">
+    <header id="hero" className="snap-section relative min-h-screen border-b-8 border-black bg-neo-cream">
       <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-70" />
       <div aria-hidden="true" className="absolute inset-0 texture-halftone opacity-20" />
 

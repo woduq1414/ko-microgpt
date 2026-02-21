@@ -10,7 +10,7 @@ import ChapterFiveSection from './components/sections/ChapterFiveSection'
 import ChapterSixSection from './components/sections/ChapterSixSection'
 import ChapterSevenSection from './components/sections/ChapterSevenSection'
 import ChapterEightSection from './components/sections/ChapterEightSection'
-import FooterSection from './components/sections/FooterSection'
+import OutroSection from './components/sections/OutroSection'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -7761,9 +7761,8 @@ function App() {
         </ChapterSevenSection>
 
         <ChapterEightSection section={chapterEightSection} />
+        <OutroSection />
       </main>
-
-      <FooterSection />
     </div>
   )
 }
