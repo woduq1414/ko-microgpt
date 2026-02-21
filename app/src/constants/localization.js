@@ -58,7 +58,7 @@ export const COPY_BY_LANG = {
       projectInfoMiddle: '의 ',
       projectInfoMicrogptLinkText: 'microgpt 프로젝트',
       projectInfoEnd: '를 기반으로, 한국어 이름을 생성하는 GPT 모델의 내부 동작 과정을 시각화 한 프로젝트입니다.',
-      projectInfoGithub: 'Go To this website Github',
+      projectInfoGithub: 'Go To Github of this website',
     },
     roles: {
       initial: '초성',

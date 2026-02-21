@@ -4926,12 +4926,13 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
       timeline.to(line, { opacity: 0, duration: 0.16, ease: 'power2.in' }, startAt + 0.12)
     }
 
-    const pulsePersistentConnector = (lineKey, startAt) => {
+    const pulsePersistentConnector = (lineKey, startAt, duration = 0.22) => {
       const line = persistentBackpropConnectors.get(lineKey)
       const dot = persistentBackpropDots.get(lineKey)
       if (!line) {
         return
       }
+      const safeDuration = Math.max(0.12, Number(duration) || 0.22)
       timeline.call(() => {
         line.classList.add('training-flow-line--pulse')
         if (dot) {
@@ -4941,7 +4942,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
           const travel = Math.max(0, line.getBoundingClientRect().width - 2)
           gsap.to(dot, {
             x: travel,
-            duration: 0.22,
+            duration: safeDuration,
             ease: 'power1.inOut',
             overwrite: 'auto',
           })
@@ -4951,7 +4952,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
           { scaleX: 1 },
           {
             scaleX: 1.08,
-            duration: 0.1,
+            duration: Math.max(0.08, safeDuration * 0.45),
             yoyo: true,
             repeat: 1,
             ease: 'power2.out',
@@ -4967,7 +4968,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
           gsap.killTweensOf(dot)
           gsap.set(dot, { opacity: 0, x: 0 })
         }
-      }, null, startAt + 0.22)
+      }, null, startAt + safeDuration)
     }
 
     trainingRows.forEach((_, rowIndex) => {
@@ -5047,60 +5048,71 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
     })
 
     const backpropLogitStart = backpropProbStart + trainingRows.length * 0.07 + 0.12
+    const slowBackpropScale = 1.65
+    const slowBackprop = (value) => value * slowBackpropScale
+    const slowConnectorDuration = slowBackprop(0.22)
     timeline.call(() => {
       setIsBackpropLogitVisible(true)
       queuePersistentConnectorRefresh()
     }, null, backpropLogitStart)
-    pulsePersistentConnector('prob-to-logit', backpropLogitStart + 0.01)
-    timeline.call(() => probColumnRefs.current[safeTargetIndex]?.classList.add('training-prob-col--active'), null, backpropLogitStart + 0.01)
-    timeline.call(() => probColumnRefs.current[safeTargetIndex]?.classList.remove('training-prob-col--active'), null, backpropLogitStart + 0.18)
-    timeline.call(() => backpropLogitRef.current?.classList.add('training-backprop-logit--pulse'), null, backpropLogitStart + 0.02)
-    timeline.call(() => backpropLogitRef.current?.classList.remove('training-backprop-logit--pulse'), null, backpropLogitStart + 0.2)
+    pulsePersistentConnector('prob-to-logit', backpropLogitStart + slowBackprop(0.01), slowConnectorDuration)
+    timeline.call(
+      () => probColumnRefs.current[safeTargetIndex]?.classList.add('training-prob-col--active'),
+      null,
+      backpropLogitStart + slowBackprop(0.01),
+    )
+    timeline.call(
+      () => probColumnRefs.current[safeTargetIndex]?.classList.remove('training-prob-col--active'),
+      null,
+      backpropLogitStart + slowBackprop(0.18),
+    )
+    timeline.call(() => backpropLogitRef.current?.classList.add('training-backprop-logit--pulse'), null, backpropLogitStart + slowBackprop(0.02))
+    timeline.call(() => backpropLogitRef.current?.classList.remove('training-backprop-logit--pulse'), null, backpropLogitStart + slowBackprop(0.2))
 
-    const backpropVectorStart = backpropLogitStart + 0.22
+    const backpropVectorStart = backpropLogitStart + slowBackprop(0.22)
     timeline.call(() => {
       setIsBackpropVectorsVisible(true)
       queuePersistentConnectorRefresh()
     }, null, backpropVectorStart)
-    pulsePersistentConnector('logit-to-block', backpropVectorStart + 0.01)
-    pulsePersistentConnector('logit-to-lmhead', backpropVectorStart + 0.04)
-    timeline.call(() => backpropBlockVectorRef.current?.classList.add('training-backprop-vector--pulse'), null, backpropVectorStart + 0.04)
-    timeline.call(() => backpropLmHeadVectorRef.current?.classList.add('training-backprop-vector--pulse'), null, backpropVectorStart + 0.06)
-    timeline.call(() => backpropBlockVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + 0.22)
-    timeline.call(() => backpropLmHeadVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + 0.22)
+    pulsePersistentConnector('logit-to-block', backpropVectorStart + slowBackprop(0.01), slowConnectorDuration)
+    pulsePersistentConnector('logit-to-lmhead', backpropVectorStart + slowBackprop(0.04), slowConnectorDuration)
+    timeline.call(() => backpropBlockVectorRef.current?.classList.add('training-backprop-vector--pulse'), null, backpropVectorStart + slowBackprop(0.04))
+    timeline.call(() => backpropLmHeadVectorRef.current?.classList.add('training-backprop-vector--pulse'), null, backpropVectorStart + slowBackprop(0.06))
+    timeline.call(() => backpropBlockVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + slowBackprop(0.22))
+    timeline.call(() => backpropLmHeadVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + slowBackprop(0.22))
 
-    const backpropBridgeStart = backpropVectorStart + 0.24
+    const backpropBridgeStart = backpropVectorStart + slowBackprop(0.24)
     timeline.call(() => {
       setIsBackpropBridgeVisible(true)
       queuePersistentConnectorRefresh()
     }, null, backpropBridgeStart)
-    pulsePersistentConnector('block-to-bridge', backpropBridgeStart + 0.01)
-    timeline.call(() => backpropBridgeRef.current?.classList.add('training-backprop-bridge--pulse'), null, backpropBridgeStart + 0.02)
-    timeline.call(() => backpropBridgeRef.current?.classList.remove('training-backprop-bridge--pulse'), null, backpropBridgeStart + 0.2)
+    pulsePersistentConnector('block-to-bridge', backpropBridgeStart + slowBackprop(0.01), slowConnectorDuration)
+    timeline.call(() => backpropBridgeRef.current?.classList.add('training-backprop-bridge--pulse'), null, backpropBridgeStart + slowBackprop(0.02))
+    timeline.call(() => backpropBridgeRef.current?.classList.remove('training-backprop-bridge--pulse'), null, backpropBridgeStart + slowBackprop(0.2))
 
-    const backpropSumEmbeddingStart = backpropBridgeStart + 0.24
+    const backpropSumEmbeddingStart = backpropBridgeStart + slowBackprop(0.24)
     timeline.call(() => {
       setIsBackpropSumEmbeddingVisible(true)
       queuePersistentConnectorRefresh()
     }, null, backpropSumEmbeddingStart)
-    pulsePersistentConnector('bridge-to-sum', backpropSumEmbeddingStart + 0.01)
-    timeline.call(() => backpropSumEmbeddingRef.current?.classList.add('training-backprop-embed-shell--pulse'), null, backpropSumEmbeddingStart + 0.02)
-    timeline.call(() => backpropSumEmbeddingRef.current?.classList.remove('training-backprop-embed-shell--pulse'), null, backpropSumEmbeddingStart + 0.2)
+    pulsePersistentConnector('bridge-to-sum', backpropSumEmbeddingStart + slowBackprop(0.01), slowConnectorDuration)
+    timeline.call(() => backpropSumEmbeddingRef.current?.classList.add('training-backprop-embed-shell--pulse'), null, backpropSumEmbeddingStart + slowBackprop(0.02))
+    timeline.call(() => backpropSumEmbeddingRef.current?.classList.remove('training-backprop-embed-shell--pulse'), null, backpropSumEmbeddingStart + slowBackprop(0.2))
 
-    const backpropEmbeddingPairStart = backpropSumEmbeddingStart + 0.24
+    const backpropEmbeddingPairStart = backpropSumEmbeddingStart + slowBackprop(0.24)
     timeline.call(() => {
       setIsBackpropEmbeddingPairVisible(true)
       queuePersistentConnectorRefresh()
     }, null, backpropEmbeddingPairStart)
-    pulsePersistentConnector('sum-to-token', backpropEmbeddingPairStart + 0.01)
-    pulsePersistentConnector('sum-to-position', backpropEmbeddingPairStart + 0.04)
-    timeline.call(() => backpropTokenEmbeddingRef.current?.classList.add('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + 0.04)
-    timeline.call(() => backpropPositionEmbeddingRef.current?.classList.add('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + 0.06)
-    timeline.call(() => backpropTokenEmbeddingRef.current?.classList.remove('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + 0.22)
-    timeline.call(() => backpropPositionEmbeddingRef.current?.classList.remove('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + 0.22)
+    pulsePersistentConnector('sum-to-token', backpropEmbeddingPairStart + slowBackprop(0.01), slowConnectorDuration)
+    pulsePersistentConnector('sum-to-position', backpropEmbeddingPairStart + slowBackprop(0.04), slowConnectorDuration)
+    timeline.call(() => backpropTokenEmbeddingRef.current?.classList.add('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + slowBackprop(0.04))
+    timeline.call(() => backpropPositionEmbeddingRef.current?.classList.add('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + slowBackprop(0.06))
+    timeline.call(() => backpropTokenEmbeddingRef.current?.classList.remove('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + slowBackprop(0.22))
+    timeline.call(() => backpropPositionEmbeddingRef.current?.classList.remove('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + slowBackprop(0.22))
     timeline.call(() => {
       setIsAnimating(false)
-    }, null, backpropEmbeddingPairStart + 0.24)
+    }, null, backpropEmbeddingPairStart + slowBackprop(0.24))
 
     return () => {
       timeline.kill()
