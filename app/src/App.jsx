@@ -3953,7 +3953,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
   const [revealedBackpropProbCards, setRevealedBackpropProbCards] = useState([])
   const [isBackpropLogitVisible, setIsBackpropLogitVisible] = useState(false)
   const [isBackpropVectorsVisible, setIsBackpropVectorsVisible] = useState(false)
-  const [isBackpropOmissionVisible, setIsBackpropOmissionVisible] = useState(false)
+  const [isBackpropBridgeVisible, setIsBackpropBridgeVisible] = useState(false)
+  const [isBackpropSumEmbeddingVisible, setIsBackpropSumEmbeddingVisible] = useState(false)
+  const [isBackpropEmbeddingPairVisible, setIsBackpropEmbeddingPairVisible] = useState(false)
   const probColumnRefs = useRef([])
   const targetRowRefs = useRef([])
   const lossCardRefs = useRef([])
@@ -3963,9 +3965,16 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
   const backpropLogitRef = useRef(null)
   const backpropBlockVectorRef = useRef(null)
   const backpropLmHeadVectorRef = useRef(null)
+  const backpropBridgeRef = useRef(null)
+  const backpropSumEmbeddingRef = useRef(null)
+  const backpropTokenEmbeddingRef = useRef(null)
+  const backpropPositionEmbeddingRef = useRef(null)
   const backpropLossScrollRef = useRef(null)
   const backpropProbScrollRef = useRef(null)
   const backpropVectorRowRef = useRef(null)
+  const backpropSumEmbeddingScrollRef = useRef(null)
+  const backpropTokenEmbeddingScrollRef = useRef(null)
+  const backpropPositionEmbeddingScrollRef = useRef(null)
   const timelineRef = useRef(null)
   const flowLayerRef = useRef(null)
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
@@ -4031,14 +4040,17 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     return sequence.slice(0, Math.min(blockSize, sequence.length))
   }, [blockSize, bos, currentExampleName, isShapeValid, stoi])
 
-  const xVectors = useMemo(() => {
+  const sumEmbeddingVectors = useMemo(() => {
     return modelSequence.map((item) => {
       const tokenRow = wte[item.tokenId] ?? []
       const positionRow = wpe[item.position] ?? []
-      const sumVector = Array.from({ length: nEmbd }, (_, index) => Number(tokenRow[index] ?? 0) + Number(positionRow[index] ?? 0))
-      return rmsNormVector(sumVector)
+      return Array.from({ length: nEmbd }, (_, index) => Number(tokenRow[index] ?? 0) + Number(positionRow[index] ?? 0))
     })
   }, [modelSequence, nEmbd, wpe, wte])
+
+  const xVectors = useMemo(() => {
+    return sumEmbeddingVectors.map((sumVector) => rmsNormVector(sumVector))
+  }, [sumEmbeddingVectors])
 
   const trainingRows = useMemo(() => {
     if (!isShapeValid || modelSequence.length < 2) {
@@ -4166,6 +4178,10 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         selectedLogitBottomEllipsis: false,
         selectedBlockOutputGrad: [],
         lmHeadDisplayItems: [],
+        embeddingPosIndices: [],
+        sumEmbeddingGradMatrix: [],
+        tokenEmbeddingGradMatrix: [],
+        positionEmbeddingGradMatrix: [],
         absMax: 1e-8,
       }
     }
@@ -4190,6 +4206,10 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         selectedLogitBottomEllipsis: false,
         selectedBlockOutputGrad: [],
         lmHeadDisplayItems: [],
+        embeddingPosIndices: [],
+        sumEmbeddingGradMatrix: [],
+        tokenEmbeddingGradMatrix: [],
+        positionEmbeddingGradMatrix: [],
         absMax: Math.max(
           1e-8,
           ...perPos.map((row) => Math.abs(Number(row.dMean_dTargetProb ?? 0))),
@@ -4245,6 +4265,78 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       })
     })
 
+    const embeddingPosIndices = Array.from({ length: Math.max(0, safeTargetIndex + 1) }, (_, posIndex) => posIndex)
+    const epsilon = 1e-3
+    const zeroVector = Array.from({ length: nEmbd }, () => 0)
+    const selectedPos = safeTargetIndex
+    const selectedTargetTokenId = Number(modelSequence[selectedPos + 1]?.tokenId ?? -1)
+
+    const computeSelectedMeanBranchLoss = (inputSumEmbeddingVectors) => {
+      if (selectedPos < 0 || selectedPos >= inputSumEmbeddingVectors.length || selectedTargetTokenId < 0) {
+        return 0
+      }
+
+      const xVectorsForEval = inputSumEmbeddingVectors.map((sumVector) => rmsNormVector(sumVector))
+      const currentXVector = xVectorsForEval[selectedPos] ?? zeroVector
+      const queryFullVector = matVec(currentXVector, attnWq)
+      const keyFullRows = xVectorsForEval.slice(0, selectedPos + 1).map((vector) => matVec(vector, attnWk))
+      const valueFullRows = xVectorsForEval.slice(0, selectedPos + 1).map((vector) => matVec(vector, attnWv))
+
+      const headOutputs = Array.from({ length: nHead }, (_, headIdx) => {
+        const queryHead = sliceHead(queryFullVector, headIdx, headDim)
+        const keySlices = keyFullRows.map((row) => sliceHead(row, headIdx, headDim))
+        const valueSlices = valueFullRows.map((row) => sliceHead(row, headIdx, headDim))
+        const logits = keySlices.map((row) => dotProduct(queryHead, row) / Math.sqrt(headDim))
+        const weights = softmaxNumbers(logits)
+        return Array.from({ length: headDim }, (_, dimIndex) => {
+          return valueSlices.reduce((accumulator, row, rowIndex) => {
+            return accumulator + Number(weights[rowIndex] ?? 0) * Number(row[dimIndex] ?? 0)
+          }, 0)
+        })
+      })
+
+      const xAttnVector = headOutputs.flat()
+      const mhaOutputVector = matVec(xAttnVector, attnWo)
+      const residualVector = currentXVector.map((value, dimIndex) => Number(value ?? 0) + Number(mhaOutputVector[dimIndex] ?? 0))
+      const xNormVector = rmsNormVector(residualVector)
+      const mlpHiddenVector = matVec(xNormVector, mlpFc1)
+      const mlpReluVector = mlpHiddenVector.map((value) => Math.max(0, Number(value ?? 0)))
+      const mlpLinearVector = matVec(mlpReluVector, mlpFc2)
+      const blockOutputVector = residualVector.map((value, dimIndex) => Number(value ?? 0) + Number(mlpLinearVector[dimIndex] ?? 0))
+      const logitsVector = matVec(blockOutputVector, lmHead)
+      const probVector = softmaxNumbers(logitsVector)
+      const targetProb = Number(probVector[selectedTargetTokenId] ?? 0)
+      const tokenLoss = -Math.log(Math.max(targetProb, 1e-12))
+      return tokenLoss * scale
+    }
+
+    const sumEmbeddingGradMatrix = embeddingPosIndices.map((posIndex) => {
+      return Array.from({ length: nEmbd }, (_, dimIndex) => {
+        const plusVectors = sumEmbeddingVectors.map((vector, rowIndex) => {
+          if (rowIndex !== posIndex) {
+            return vector
+          }
+          const nextVector = [...vector]
+          nextVector[dimIndex] = Number(nextVector[dimIndex] ?? 0) + epsilon
+          return nextVector
+        })
+        const minusVectors = sumEmbeddingVectors.map((vector, rowIndex) => {
+          if (rowIndex !== posIndex) {
+            return vector
+          }
+          const nextVector = [...vector]
+          nextVector[dimIndex] = Number(nextVector[dimIndex] ?? 0) - epsilon
+          return nextVector
+        })
+        const plusLoss = computeSelectedMeanBranchLoss(plusVectors)
+        const minusLoss = computeSelectedMeanBranchLoss(minusVectors)
+        const grad = (plusLoss - minusLoss) / (2 * epsilon)
+        return Number.isFinite(grad) ? grad : 0
+      })
+    })
+    const tokenEmbeddingGradMatrix = sumEmbeddingGradMatrix.map((row) => [...row])
+    const positionEmbeddingGradMatrix = sumEmbeddingGradMatrix.map((row) => [...row])
+
     const absMax = Math.max(
       1e-8,
       ...perPos.map((row) => Math.abs(Number(row.dMean_dTargetProb ?? 0))),
@@ -4254,6 +4346,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       ...lmHeadDisplayItems.flatMap((item) =>
         item.type === 'column' ? item.values.map((value) => Math.abs(Number(value ?? 0))) : [],
       ),
+      ...sumEmbeddingGradMatrix.flatMap((row) => row.map((value) => Math.abs(Number(value ?? 0)))),
+      ...tokenEmbeddingGradMatrix.flatMap((row) => row.map((value) => Math.abs(Number(value ?? 0)))),
+      ...positionEmbeddingGradMatrix.flatMap((row) => row.map((value) => Math.abs(Number(value ?? 0)))),
     )
 
     return {
@@ -4263,9 +4358,30 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       selectedLogitBottomEllipsis,
       selectedBlockOutputGrad,
       lmHeadDisplayItems,
+      embeddingPosIndices,
+      sumEmbeddingGradMatrix,
+      tokenEmbeddingGradMatrix,
+      positionEmbeddingGradMatrix,
       absMax,
     }
-  }, [bos, lmHead, nEmbd, safeTargetIndex, tokenChars, trainingRows])
+  }, [
+    attnWo,
+    attnWk,
+    attnWq,
+    attnWv,
+    bos,
+    headDim,
+    lmHead,
+    mlpFc1,
+    mlpFc2,
+    modelSequence,
+    nEmbd,
+    nHead,
+    safeTargetIndex,
+    sumEmbeddingVectors,
+    tokenChars,
+    trainingRows,
+  ])
 
   const sharedGridStyle = useMemo(() => {
     const columnCount = Math.max(1, trainingRows.length)
@@ -4287,10 +4403,16 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     const backpropLossScrollNode = backpropLossScrollRef.current
     const backpropProbScrollNode = backpropProbScrollRef.current
     const backpropVectorRowNode = backpropVectorRowRef.current
+    const backpropSumEmbeddingScrollNode = backpropSumEmbeddingScrollRef.current
+    const backpropTokenEmbeddingScrollNode = backpropTokenEmbeddingScrollRef.current
+    const backpropPositionEmbeddingScrollNode = backpropPositionEmbeddingScrollRef.current
     const backpropScrollNodes = [
       backpropLossScrollNode,
       backpropProbScrollNode,
       backpropVectorRowNode,
+      backpropSumEmbeddingScrollNode,
+      backpropTokenEmbeddingScrollNode,
+      backpropPositionEmbeddingScrollNode,
     ].filter(Boolean)
     const createdFlowNodes = []
     const persistentBackpropConnectors = new Map()
@@ -4308,6 +4430,10 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
       backpropLogitRef.current?.classList.remove('training-backprop-logit--pulse')
       backpropBlockVectorRef.current?.classList.remove('training-backprop-vector--pulse')
       backpropLmHeadVectorRef.current?.classList.remove('training-backprop-vector--pulse')
+      backpropBridgeRef.current?.classList.remove('training-backprop-bridge--pulse')
+      backpropSumEmbeddingRef.current?.classList.remove('training-backprop-embed-shell--pulse')
+      backpropTokenEmbeddingRef.current?.classList.remove('training-backprop-embed-card--pulse')
+      backpropPositionEmbeddingRef.current?.classList.remove('training-backprop-embed-card--pulse')
       flowLayer?.querySelectorAll('.training-flow-line--pulse').forEach((line) => {
         line.classList.remove('training-flow-line--pulse')
         gsap.set(line, { scaleX: 1 })
@@ -4422,6 +4548,38 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         fromAnchor: { x: 'center', y: 'bottom' },
         toAnchor: { x: 'center', y: 'top' },
       },
+      {
+        key: 'block-to-bridge',
+        variant: 'backprop-vector',
+        getFrom: () => backpropBlockVectorRef.current,
+        getTo: () => backpropBridgeRef.current,
+        fromAnchor: { x: 'center', y: 'bottom' },
+        toAnchor: { x: 'center', y: 'top' },
+      },
+      {
+        key: 'bridge-to-sum',
+        variant: 'backprop-vector',
+        getFrom: () => backpropBridgeRef.current,
+        getTo: () => backpropSumEmbeddingRef.current,
+        fromAnchor: { x: 'center', y: 'bottom' },
+        toAnchor: { x: 'center', y: 'top' },
+      },
+      {
+        key: 'sum-to-token',
+        variant: 'backprop-vector',
+        getFrom: () => backpropSumEmbeddingRef.current,
+        getTo: () => backpropTokenEmbeddingRef.current,
+        fromAnchor: { x: 'center', y: 'bottom' },
+        toAnchor: { x: 'center', y: 'top' },
+      },
+      {
+        key: 'sum-to-position',
+        variant: 'backprop-vector',
+        getFrom: () => backpropSumEmbeddingRef.current,
+        getTo: () => backpropPositionEmbeddingRef.current,
+        fromAnchor: { x: 'center', y: 'bottom' },
+        toAnchor: { x: 'center', y: 'top' },
+      },
     ]
 
     const refreshPersistentBackpropConnectors = () => {
@@ -4526,6 +4684,10 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         backpropVectorRowNode,
         backpropBlockVectorRef.current,
         backpropLmHeadVectorRef.current,
+        backpropBridgeRef.current,
+        backpropSumEmbeddingRef.current,
+        backpropTokenEmbeddingRef.current,
+        backpropPositionEmbeddingRef.current,
       ]
       observedNodes.forEach((node) => {
         if (node) {
@@ -4545,7 +4707,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
         setRevealedBackpropProbCards(Array.from({ length: positionCount }, () => true))
         setIsBackpropLogitVisible(true)
         setIsBackpropVectorsVisible(true)
-        setIsBackpropOmissionVisible(true)
+        setIsBackpropBridgeVisible(true)
+        setIsBackpropSumEmbeddingVisible(true)
+        setIsBackpropEmbeddingPairVisible(true)
         queuePersistentConnectorRefresh()
       })
       return () => {
@@ -4731,13 +4895,38 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     timeline.call(() => backpropBlockVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + 0.22)
     timeline.call(() => backpropLmHeadVectorRef.current?.classList.remove('training-backprop-vector--pulse'), null, backpropVectorStart + 0.22)
 
-    const backpropOmissionStart = backpropVectorStart + 0.24
+    const backpropBridgeStart = backpropVectorStart + 0.24
     timeline.call(() => {
-      setIsBackpropOmissionVisible(true)
-    }, null, backpropOmissionStart)
+      setIsBackpropBridgeVisible(true)
+      queuePersistentConnectorRefresh()
+    }, null, backpropBridgeStart)
+    pulsePersistentConnector('block-to-bridge', backpropBridgeStart + 0.01)
+    timeline.call(() => backpropBridgeRef.current?.classList.add('training-backprop-bridge--pulse'), null, backpropBridgeStart + 0.02)
+    timeline.call(() => backpropBridgeRef.current?.classList.remove('training-backprop-bridge--pulse'), null, backpropBridgeStart + 0.2)
+
+    const backpropSumEmbeddingStart = backpropBridgeStart + 0.24
+    timeline.call(() => {
+      setIsBackpropSumEmbeddingVisible(true)
+      queuePersistentConnectorRefresh()
+    }, null, backpropSumEmbeddingStart)
+    pulsePersistentConnector('bridge-to-sum', backpropSumEmbeddingStart + 0.01)
+    timeline.call(() => backpropSumEmbeddingRef.current?.classList.add('training-backprop-embed-shell--pulse'), null, backpropSumEmbeddingStart + 0.02)
+    timeline.call(() => backpropSumEmbeddingRef.current?.classList.remove('training-backprop-embed-shell--pulse'), null, backpropSumEmbeddingStart + 0.2)
+
+    const backpropEmbeddingPairStart = backpropSumEmbeddingStart + 0.24
+    timeline.call(() => {
+      setIsBackpropEmbeddingPairVisible(true)
+      queuePersistentConnectorRefresh()
+    }, null, backpropEmbeddingPairStart)
+    pulsePersistentConnector('sum-to-token', backpropEmbeddingPairStart + 0.01)
+    pulsePersistentConnector('sum-to-position', backpropEmbeddingPairStart + 0.04)
+    timeline.call(() => backpropTokenEmbeddingRef.current?.classList.add('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + 0.04)
+    timeline.call(() => backpropPositionEmbeddingRef.current?.classList.add('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + 0.06)
+    timeline.call(() => backpropTokenEmbeddingRef.current?.classList.remove('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + 0.22)
+    timeline.call(() => backpropPositionEmbeddingRef.current?.classList.remove('training-backprop-embed-card--pulse'), null, backpropEmbeddingPairStart + 0.22)
     timeline.call(() => {
       setIsAnimating(false)
-    }, null, backpropOmissionStart + 0.04)
+    }, null, backpropEmbeddingPairStart + 0.24)
 
     return () => {
       timeline.kill()
@@ -4770,7 +4959,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
     setRevealedBackpropProbCards(hiddenMask)
     setIsBackpropLogitVisible(false)
     setIsBackpropVectorsVisible(false)
-    setIsBackpropOmissionVisible(false)
+    setIsBackpropBridgeVisible(false)
+    setIsBackpropSumEmbeddingVisible(false)
+    setIsBackpropEmbeddingPairVisible(false)
     setIsAnimating(false)
   }
 
@@ -4810,7 +5001,74 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
 
   const lmHeadVisibleColumnCount = Math.max(1, backpropData.lmHeadDisplayItems.length)
   const lmHeadGridStyle = { '--training-lmhead-visible-cols': String(lmHeadVisibleColumnCount) }
+  const embedColumnCount = Math.max(1, backpropData.embeddingPosIndices.length)
+  const embedTableStyle = {
+    '--training-embed-col-count': String(embedColumnCount),
+    ...(isMobile ? { minWidth: `${56 + embedColumnCount * 92 + Math.max(0, embedColumnCount - 1) * 6}px` } : {}),
+  }
   const selectedInputToken = modelSequence[safeTargetIndex] ?? null
+  const renderEmbeddingGradientTable = (matrix, isVisible, tableKeyPrefix, scrollRef, headHighlightLine = null) => {
+    return (
+      <div ref={scrollRef} className="training-backprop-embed-scroll">
+        <div className="training-backprop-embed-table" style={embedTableStyle}>
+          <div className="training-backprop-embed-row training-backprop-embed-row--head">
+            <span className={`training-backprop-embed-dim training-backprop-embed-head training-backprop-head-spacer ${valueTextClass}`} aria-hidden="true" />
+            {backpropData.embeddingPosIndices.map((posIndex) => {
+              const headTokenLabel = modelSequence[posIndex]?.label ?? 'N/A'
+              return (
+                <span key={`${tableKeyPrefix}-head-pos-${posIndex}`} className={`training-backprop-embed-head ${valueTextClass}`}>
+                  <span className="training-backprop-embed-head-stack">
+                    <span
+                      className={`training-backprop-embed-head-pos ${
+                        headHighlightLine === 'pos' ? 'training-backprop-embed-head-pos--highlight' : ''
+                      }`.trim()}
+                    >
+                      {`POS ${posIndex}`}
+                    </span>
+                    <span
+                      className={`training-backprop-embed-head-token ${
+                        headHighlightLine === 'token' ? 'training-backprop-embed-head-token--highlight' : ''
+                      }`.trim()}
+                    >
+                      {headTokenLabel}
+                    </span>
+                  </span>
+                </span>
+              )
+            })}
+          </div>
+
+          {Array.from({ length: nEmbd }, (_, dimIndex) => {
+            return (
+              <div key={`${tableKeyPrefix}-dim-${dimIndex}`} className="training-backprop-embed-row">
+                <span className={`training-backprop-embed-dim ${valueTextClass}`}>{dimIndex}</span>
+                {backpropData.embeddingPosIndices.map((posIndex) => {
+                  const value = Number(matrix?.[posIndex]?.[dimIndex] ?? 0)
+                  const ratio = clamp(Math.abs(value) / Math.max(backpropData.absMax, 1e-8), 0, 1)
+                  return (
+                    <span
+                      key={`${tableKeyPrefix}-cell-${posIndex}-${dimIndex}`}
+                      className={`training-backprop-embed-value ${valueTextClass}`}
+                      style={
+                        isVisible
+                          ? {
+                              backgroundColor: getHeatColor(value, Math.max(backpropData.absMax, 1e-8)),
+                              color: ratio >= 0.78 ? '#fff' : '#000',
+                            }
+                          : undefined
+                      }
+                    >
+                      {isVisible ? value.toFixed(3) : ATTENTION_HIDDEN_PLACEHOLDER}
+                    </span>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={`training-demo-wrap reveal ${reducedMotion ? 'training-demo-wrap--static' : ''}`}>
@@ -5131,7 +5389,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           >
             <p className="training-backprop-label">{`LM Head Parameter Gradient (Matrix Slice, POS ${safeTargetIndex})`}</p>
             <div className="training-backprop-lmhead-header" style={lmHeadGridStyle}>
-              <span className={`training-backprop-lmhead-corner ${valueTextClass}`}>DIM</span>
+              <span className={`training-backprop-lmhead-corner training-backprop-head-spacer ${valueTextClass}`} aria-hidden="true" />
               {backpropData.lmHeadDisplayItems.map((item) => {
                 if (item.type === 'ellipsis') {
                   return (
@@ -5189,9 +5447,66 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
           </article>
         </div>
 
-        <p className={`training-backprop-omission training-backprop-node ${isBackpropOmissionVisible ? '' : 'training-backprop-omission--hidden'}`.trim()}>
-          ... 나머지 파라미터 gradient 계산은 동일한 체인 규칙으로 생략 ...
-        </p>
+        <section
+          ref={backpropBridgeRef}
+          className={`training-backprop-bridge training-backprop-node ${isBackpropBridgeVisible ? '' : 'training-backprop-bridge--hidden'}`.trim()}
+          aria-label="Backpropagation Bridge Description"
+        >
+          <p className="training-backprop-label">중략 설명</p>
+          <p className={`training-backprop-bridge-text ${valueTextClass}`}>
+            중략: Block Output에서 Sum Embedding까지의 내부 연산도 동일한 체인 룰로 역전파됩니다.
+          </p>
+        </section>
+
+        <section
+          ref={backpropSumEmbeddingRef}
+          className={`training-backprop-embed-shell training-backprop-embed-shell--single training-backprop-node ${
+            isBackpropSumEmbeddingVisible ? '' : 'training-backprop-embed-shell--hidden'
+          }`.trim()}
+          aria-label="Sum Embedding Gradient"
+        >
+          <p className="training-backprop-label">
+            {safeTargetIndex === 0 ? 'Sum Embedding Gradient (POS 0)' : `Sum Embedding Gradient (POS 0 ~ ${safeTargetIndex})`}
+          </p>
+          {renderEmbeddingGradientTable(
+            backpropData.sumEmbeddingGradMatrix,
+            isBackpropSumEmbeddingVisible,
+            'sum-embedding',
+            backpropSumEmbeddingScrollRef,
+          )}
+        </section>
+
+        <div className={`training-backprop-embed-split training-backprop-node ${isBackpropEmbeddingPairVisible ? '' : 'training-backprop-embed-split--hidden'}`.trim()}>
+          <section
+            ref={backpropTokenEmbeddingRef}
+            className={`training-backprop-embed-shell training-backprop-embed-card ${isBackpropEmbeddingPairVisible ? '' : 'training-backprop-embed-shell--hidden'}`.trim()}
+            aria-label="Token Embedding Gradient"
+          >
+            <p className="training-backprop-label">{`Token Embedding Gradient (POS 0 ~ ${safeTargetIndex})`}</p>
+            {renderEmbeddingGradientTable(
+              backpropData.tokenEmbeddingGradMatrix,
+              isBackpropEmbeddingPairVisible,
+              'token-embedding',
+              backpropTokenEmbeddingScrollRef,
+              'token',
+            )}
+          </section>
+
+          <section
+            ref={backpropPositionEmbeddingRef}
+            className={`training-backprop-embed-shell training-backprop-embed-card ${isBackpropEmbeddingPairVisible ? '' : 'training-backprop-embed-shell--hidden'}`.trim()}
+            aria-label="Position Embedding Gradient"
+          >
+            <p className="training-backprop-label">{`Position Embedding Gradient (POS 0 ~ ${safeTargetIndex})`}</p>
+            {renderEmbeddingGradientTable(
+              backpropData.positionEmbeddingGradMatrix,
+              isBackpropEmbeddingPairVisible,
+              'position-embedding',
+              backpropPositionEmbeddingScrollRef,
+              'pos',
+            )}
+          </section>
+        </div>
 
         <div ref={flowLayerRef} className="training-flow-layer" aria-hidden="true" />
       </div>
@@ -5259,7 +5574,7 @@ const lessonSections = [
   {
     id: 'lesson-5',
     label: 'CHAPTER 05',
-    title: 'TRAINING',
+    title: 'LOSS AND UPDATE',
     description:
       '각 POS에서 정답 토큰이 나올 확률을 통해 최종 손실(loss)을 계산합니다. 이 손실을 줄이는 과정이 모델이 학습하는 과정이고, 내부에서는 손실을 역전파(backpropagation)하여 모델의 파라미터를 업데이트합니다.',
     points: [
