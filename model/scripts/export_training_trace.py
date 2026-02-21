@@ -30,7 +30,7 @@ from ko_main import (  # noqa: E402
 )
 
 STEP_OPTIONS = [50, 100, 500, 1000]
-ROUND_DIGITS = 8
+ROUND_DIGITS = 4
 CHOSEONG_IEUNG_NFD = "\u110b"
 CHOSEONG_SIOS_NFD = "\u1109"
 
