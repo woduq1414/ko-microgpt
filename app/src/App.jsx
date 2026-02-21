@@ -5700,6 +5700,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
   const [hasStarted, setHasStarted] = useState(false)
   const [, setIsStepAnimating] = useState(false)
   const [selectedParameterIndex, setSelectedParameterIndex] = useState(0)
+  const [chapter6IsLearningRateHelpOpen, setChapter6IsLearningRateHelpOpen] = useState(false)
   const chapterSixFlowScopeRef = useRef(null)
   const chapterSixFlowLayerRef = useRef(null)
   const chapterSixEquationScrollRef = useRef(null)
@@ -6083,6 +6084,33 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
     }
   }, [reducedMotion, safeCurrentStep, safeSelectedParameterIndex])
 
+  useEffect(() => {
+    if (!chapter6IsLearningRateHelpOpen) {
+      return undefined
+    }
+
+    const onPointerDown = (event) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('.chapter-six-lr-help-wrap')) {
+        return
+      }
+      setChapter6IsLearningRateHelpOpen(false)
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setChapter6IsLearningRateHelpOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [chapter6IsLearningRateHelpOpen])
+
   if (!parameterOptions.length || !stepRecords.length) {
     return (
       <div className="token-state-card reveal">
@@ -6331,7 +6359,30 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
                 })}
 
                 <article className="chapter-six-scalar-card" aria-label="learning rate">
-                  <p className="chapter-six-scalar-title">Learning Rate</p>
+                  <div className="chapter-six-scalar-head">
+                    <p className="chapter-six-scalar-title">Learning Rate</p>
+                    <div className="chapter-six-lr-help-wrap">
+                      <button
+                        type="button"
+                        className="chapter-six-lr-help-btn"
+                        onClick={() => setChapter6IsLearningRateHelpOpen((previous) => !previous)}
+                        aria-label="Learning Rate 설명 보기"
+                        aria-expanded={chapter6IsLearningRateHelpOpen}
+                        aria-controls="chapter-six-lr-help-popover"
+                      >
+                        ?
+                      </button>
+                      {chapter6IsLearningRateHelpOpen ? (
+                        <div id="chapter-six-lr-help-popover" role="note" className="chapter-six-lr-help-popover">
+                          <p className="chapter-six-lr-help-title">LEARNING RATE</p>
+                          <p className="chapter-six-lr-help-text">
+                            Learning rate는 gradient를 파라미터에 얼마나 크게 반영할지 정하는 스텝 크기입니다. 값이 크면 빠르게
+                            움직이지만 불안정해질 수 있고, 작으면 안정적이지만 학습이 느려집니다. 이 예제에서 Learning rate는 step이 진행됨에 따라 자동으로 감소(decay)합니다.
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                   <p ref={learningRateValueRef} className="chapter-six-scalar-value">
                     {learningRateText}
                   </p>
