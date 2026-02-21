@@ -7,6 +7,7 @@ import ChapterTwoSection from './components/sections/ChapterTwoSection'
 import ChapterThreeSection from './components/sections/ChapterThreeSection'
 import ChapterFourSection from './components/sections/ChapterFourSection'
 import ChapterFiveSection from './components/sections/ChapterFiveSection'
+import ChapterSixSection from './components/sections/ChapterSixSection'
 import FooterSection from './components/sections/FooterSection'
 
 gsap.registerPlugin(ScrollTrigger)
@@ -73,6 +74,11 @@ const EMBEDDING_NEGATIVE_BASE = '#feeaea'
 const EMBEDDING_NEGATIVE_STRONG = '#ef4444'
 const ATTENTION_HIDDEN_PLACEHOLDER = '····'
 const LOGIT_PARTIAL_COMMIT_STEP = 2
+const CHAPTER_SIX_DEFAULT_STEP_OPTIONS = [50, 100, 500, 1000]
+const CHAPTER_SIX_AUTOPLAY_INTERVAL_MS = 30
+const CHAPTER_SIX_FLOW_DURATION_SCALE = 1
+const CHAPTER_SIX_LOSS_CHART_WIDTH = 320
+const CHAPTER_SIX_LOSS_CHART_HEIGHT = 104
 
 const createRevealVector = (length) => Array.from({ length: Math.max(0, Number(length) || 0) }, () => false)
 
@@ -281,6 +287,112 @@ const getHeatColor = (value, maxAbs) => {
     return interpolateHexColor(EMBEDDING_POSITIVE_BASE, EMBEDDING_POSITIVE_STRONG, ratio)
   }
   return interpolateHexColor(EMBEDDING_NEGATIVE_BASE, EMBEDDING_NEGATIVE_STRONG, ratio)
+}
+
+const hasNumericVector = (value, expectedLength = 16) => {
+  return (
+    Array.isArray(value) &&
+    value.length === expectedLength &&
+    value.every((item) => Number.isFinite(Number(item)))
+  )
+}
+
+const isTrainingTracePayloadValid = (payload) => {
+  if (!payload || typeof payload !== 'object') {
+    return false
+  }
+  if (Number(payload?.num_steps) !== 1000) {
+    return false
+  }
+  if (
+    !Array.isArray(payload?.step_options) ||
+    payload.step_options.length !== 4 ||
+    payload.step_options.some((step) => !CHAPTER_SIX_DEFAULT_STEP_OPTIONS.includes(Number(step)))
+  ) {
+    return false
+  }
+  if (!payload?.optimizer || typeof payload.optimizer !== 'object') {
+    return false
+  }
+  if (!Array.isArray(payload?.parameter_options) || !payload.parameter_options.length) {
+    return false
+  }
+  const paramIds = payload.parameter_options
+    .map((option) => option?.id)
+    .filter((id) => typeof id === 'string')
+  if (paramIds.length !== payload.parameter_options.length) {
+    return false
+  }
+  const uniqueParamIds = new Set(paramIds)
+  if (uniqueParamIds.size !== paramIds.length) {
+    return false
+  }
+  const isParameterOptionValid = payload.parameter_options.every((option) => {
+    if (!option || typeof option !== 'object') {
+      return false
+    }
+    if (typeof option.id !== 'string' || !option.id) {
+      return false
+    }
+    if (typeof option.label !== 'string' || !option.label) {
+      return false
+    }
+    if (!['wte', 'wpe', 'lm_head', 'attn_wq'].includes(option.matrix)) {
+      return false
+    }
+    if (!Number.isInteger(Number(option.row_index)) || Number(option.row_index) < 0) {
+      return false
+    }
+    if (option.token_char_nfd != null && typeof option.token_char_nfd !== 'string') {
+      return false
+    }
+    if (option.token_char_display != null && typeof option.token_char_display !== 'string') {
+      return false
+    }
+    return true
+  })
+  if (!isParameterOptionValid) {
+    return false
+  }
+
+  if (!Array.isArray(payload?.steps) || payload.steps.length !== Number(payload.num_steps) + 1) {
+    return false
+  }
+
+  const expectedParamIds = Array.from(uniqueParamIds)
+  const isStepRecordValid = payload.steps.every((record, index) => {
+    if (!record || typeof record !== 'object') {
+      return false
+    }
+    if (Number(record.step) !== index) {
+      return false
+    }
+    if (typeof record.word !== 'string') {
+      return false
+    }
+    if (index === 0) {
+      if (record.loss !== null) {
+        return false
+      }
+    } else if (!Number.isFinite(Number(record.loss))) {
+      return false
+    }
+    if (!Number.isFinite(Number(record.learning_rate))) {
+      return false
+    }
+    if (!record.params || typeof record.params !== 'object') {
+      return false
+    }
+    return expectedParamIds.every((paramId) => {
+      const paramRecord = record.params[paramId]
+      if (!paramRecord || typeof paramRecord !== 'object') {
+        return false
+      }
+      return hasNumericVector(paramRecord.grad, 16) && hasNumericVector(paramRecord.after, 16)
+    })
+  })
+
+  return isStepRecordValid
 }
 
 const rmsNormVector = (vector, epsilon = 1e-5) => {
@@ -5514,6 +5626,680 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile }) {
   )
 }
 
+function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile }) {
+  const stepOptions = useMemo(() => {
+    const raw = Array.isArray(trace?.step_options) ? trace.step_options : CHAPTER_SIX_DEFAULT_STEP_OPTIONS
+    const normalized = raw
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value >= 0)
+      .sort((left, right) => left - right)
+    return normalized.length ? normalized : CHAPTER_SIX_DEFAULT_STEP_OPTIONS
+  }, [trace])
+  const parameterOptions = useMemo(() => {
+    return Array.isArray(trace?.parameter_options) ? trace.parameter_options : []
+  }, [trace])
+  const stepRecords = useMemo(() => {
+    return Array.isArray(trace?.steps) ? trace.steps : []
+  }, [trace])
+
+  const [targetStepOptionIndex, setTargetStepOptionIndex] = useState(0)
+  const [currentStep, setCurrentStep] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [hasStarted, setHasStarted] = useState(false)
+  const [, setIsStepAnimating] = useState(false)
+  const [selectedParameterIndex, setSelectedParameterIndex] = useState(0)
+  const chapterSixFlowScopeRef = useRef(null)
+  const chapterSixFlowLayerRef = useRef(null)
+  const chapterSixEquationScrollRef = useRef(null)
+  const lossCardRef = useRef(null)
+  const learningRateValueRef = useRef(null)
+  const gradientScrollRef = useRef(null)
+  const parameterScrollRef = useRef(null)
+  const gradientRowRefs = useRef([])
+  const parameterRowRefs = useRef([])
+  const chapterSixLineTimelineRef = useRef(null)
+  const chapterSixAdvanceTimerRef = useRef(null)
+  const chapterSixAnimationRunIdRef = useRef(0)
+  const hasStepRenderedRef = useRef(false)
+  const previousAnimatedStepRef = useRef(0)
+
+  const maxTraceStep = Math.max(0, stepRecords.length - 1)
+  const safeTargetStepOptionIndex = clamp(targetStepOptionIndex, 0, Math.max(0, stepOptions.length - 1))
+  const safeSelectedParameterIndex = clamp(selectedParameterIndex, 0, Math.max(0, parameterOptions.length - 1))
+  const targetStepRaw = Number(stepOptions[safeTargetStepOptionIndex] ?? CHAPTER_SIX_DEFAULT_STEP_OPTIONS[0])
+  const targetStep = clamp(targetStepRaw, 0, maxTraceStep)
+  const safeCurrentStep = clamp(currentStep, 0, targetStep)
+
+  useEffect(() => {
+    if (!hasStarted || !isPlaying) {
+      return undefined
+    }
+
+    if (safeCurrentStep >= targetStep) {
+      return undefined
+    }
+
+    const delayMs = CHAPTER_SIX_AUTOPLAY_INTERVAL_MS
+    chapterSixAdvanceTimerRef.current = window.setTimeout(() => {
+      chapterSixAdvanceTimerRef.current = null
+      if (!reducedMotion) {
+        setIsStepAnimating(true)
+      }
+      setCurrentStep((previousStep) => {
+        const nextStep = Math.min(previousStep + 1, targetStep)
+        if (nextStep >= targetStep) {
+          setIsPlaying(false)
+        }
+        return nextStep
+      })
+    }, delayMs)
+
+    return () => {
+      if (chapterSixAdvanceTimerRef.current != null) {
+        window.clearTimeout(chapterSixAdvanceTimerRef.current)
+        chapterSixAdvanceTimerRef.current = null
+      }
+    }
+  }, [hasStarted, isPlaying, reducedMotion, safeCurrentStep, targetStep])
+
+  const selectedParameter = parameterOptions[safeSelectedParameterIndex]
+  const currentRecord = stepRecords[safeCurrentStep] ?? stepRecords[0]
+  const selectedParameterRecord =
+    selectedParameter && currentRecord?.params && typeof currentRecord.params === 'object'
+      ? currentRecord.params[selectedParameter.id]
+      : null
+  const fallbackVector = Array.from({ length: 16 }, () => 0)
+  const gradientVector = hasNumericVector(selectedParameterRecord?.grad, 16) ? selectedParameterRecord.grad : fallbackVector
+  const afterVector = hasNumericVector(selectedParameterRecord?.after, 16) ? selectedParameterRecord.after : fallbackVector
+
+  const formatValue = (value, fractionDigits = 4) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) {
+      return '0.0000'
+    }
+    const normalized = Object.is(numeric, -0) ? 0 : numeric
+    return normalized.toFixed(fractionDigits)
+  }
+
+  const moveTargetStepPreset = (direction) => {
+    if (!stepOptions.length) {
+      return
+    }
+    setTargetStepOptionIndex((previous) => {
+      const safePrevious = clamp(previous, 0, Math.max(0, stepOptions.length - 1))
+      return (safePrevious + direction + stepOptions.length) % stepOptions.length
+    })
+    setCurrentStep(0)
+    setIsPlaying(false)
+    setHasStarted(false)
+  }
+
+  const moveParameter = (direction) => {
+    if (!parameterOptions.length) {
+      return
+    }
+    setSelectedParameterIndex((previous) => {
+      const safePrevious = clamp(previous, 0, Math.max(0, parameterOptions.length - 1))
+      return (safePrevious + direction + parameterOptions.length) % parameterOptions.length
+    })
+  }
+
+  const resetChapterSixFlowAnimationState = () => {
+    chapterSixLineTimelineRef.current?.kill()
+    chapterSixLineTimelineRef.current = null
+    if (chapterSixFlowLayerRef.current) {
+      chapterSixFlowLayerRef.current.innerHTML = ''
+    }
+    previousAnimatedStepRef.current = 0
+    setIsStepAnimating(false)
+  }
+
+  const onStart = () => {
+    resetChapterSixFlowAnimationState()
+    setCurrentStep(0)
+    setHasStarted(true)
+    setIsPlaying(true)
+  }
+
+  const onTogglePlay = () => {
+    if (!hasStarted) {
+      return
+    }
+    if (isPlaying) {
+      setIsPlaying(false)
+      return
+    }
+    if (safeCurrentStep >= targetStep) {
+      resetChapterSixFlowAnimationState()
+      setCurrentStep(0)
+    }
+    setIsPlaying(true)
+  }
+
+  const onReset = () => {
+    resetChapterSixFlowAnimationState()
+    setCurrentStep(0)
+    setIsPlaying(false)
+    setHasStarted(false)
+  }
+
+  const onStepSliderChange = (event) => {
+    const nextStep = clamp(Number(event.target.value), 0, targetStep)
+    setCurrentStep(nextStep)
+    setIsPlaying(false)
+    setIsStepAnimating(false)
+  }
+
+  const onStepNudge = (direction) => {
+    setCurrentStep((previousStep) => clamp(previousStep + direction, 0, targetStep))
+    setIsPlaying(false)
+    setIsStepAnimating(false)
+  }
+
+  const lossText = safeCurrentStep === 0 || currentRecord?.loss == null ? 'PRE' : formatValue(currentRecord.loss, 4)
+  const learningRateText = formatValue(currentRecord?.learning_rate ?? 0, 6)
+  const wordText = typeof currentRecord?.word === 'string' && currentRecord.word ? currentRecord.word : 'N/A'
+  const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
+  const lossTrend = useMemo(() => {
+    const chartWidth = CHAPTER_SIX_LOSS_CHART_WIDTH
+    const chartHeight = CHAPTER_SIX_LOSS_CHART_HEIGHT
+    const paddingX = 12
+    const paddingY = 12
+    const plotWidth = chartWidth - paddingX * 2
+    const plotHeight = chartHeight - paddingY * 2
+    const safeMaxStep = Math.max(1, targetStep)
+    const visibleMaxStep = clamp(safeCurrentStep, 0, safeMaxStep)
+
+    const samples = []
+    let minLoss = Number.POSITIVE_INFINITY
+    let maxLoss = Number.NEGATIVE_INFINITY
+
+    for (let step = 1; step <= visibleMaxStep; step += 1) {
+      const record = stepRecords[step]
+      const lossValue = Number(record?.loss)
+      if (!Number.isFinite(lossValue)) {
+        continue
+      }
+      minLoss = Math.min(minLoss, lossValue)
+      maxLoss = Math.max(maxLoss, lossValue)
+      samples.push({ step, loss: lossValue })
+    }
+
+    if (!samples.length) {
+      return {
+        chartWidth,
+        chartHeight,
+        pathData: '',
+        currentPoint: null,
+        minLoss: 0,
+        maxLoss: 0,
+      }
+    }
+
+    const lossRange = Math.max(maxLoss - minLoss, 1e-9)
+    const toPoint = (step, loss) => {
+      const x = paddingX + (step / safeMaxStep) * plotWidth
+      const y = paddingY + ((maxLoss - loss) / lossRange) * plotHeight
+      return { x, y }
+    }
+
+    const points = samples.map((sample) => toPoint(sample.step, sample.loss))
+    const pathData = points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+      .join(' ')
+
+    const currentLoss = Number(stepRecords[safeCurrentStep]?.loss)
+    const currentPoint =
+      visibleMaxStep > 0 && Number.isFinite(currentLoss) ? toPoint(Math.min(safeCurrentStep, safeMaxStep), currentLoss) : null
+
+    return {
+      chartWidth,
+      chartHeight,
+      pathData,
+      currentPoint,
+      minLoss,
+      maxLoss,
+    }
+  }, [safeCurrentStep, stepRecords, targetStep])
+
+  useLayoutEffect(() => {
+    const flowScopeNode = chapterSixFlowScopeRef.current
+    const flowLayerNode = chapterSixFlowLayerRef.current
+    const equationScrollNode = chapterSixEquationScrollRef.current
+    const gradientScrollNode = gradientScrollRef.current
+    const parameterScrollNode = parameterScrollRef.current
+
+    if (!flowScopeNode || !flowLayerNode) {
+      return undefined
+    }
+
+    chapterSixLineTimelineRef.current?.kill()
+    chapterSixLineTimelineRef.current = null
+    flowLayerNode.innerHTML = ''
+    const animationRunId = chapterSixAnimationRunIdRef.current + 1
+    chapterSixAnimationRunIdRef.current = animationRunId
+
+    if (!hasStepRenderedRef.current) {
+      hasStepRenderedRef.current = true
+      previousAnimatedStepRef.current = safeCurrentStep
+      return undefined
+    }
+
+    if (previousAnimatedStepRef.current === safeCurrentStep || reducedMotion) {
+      previousAnimatedStepRef.current = safeCurrentStep
+      return undefined
+    }
+    previousAnimatedStepRef.current = safeCurrentStep
+
+    const gradientNodes = gradientRowRefs.current.slice(0, 16).filter(Boolean)
+    const parameterNodes = parameterRowRefs.current.slice(0, 16).filter(Boolean)
+    const lossNode = lossCardRef.current
+    const learningRateNode = learningRateValueRef.current
+    if (!gradientNodes.length || !parameterNodes.length || !lossNode || !learningRateNode) {
+      return undefined
+    }
+
+    const connections = []
+
+    const resolveAnchorPoint = (rect, anchor) => {
+      const x = anchor.x === 'left' ? rect.left : anchor.x === 'right' ? rect.right : rect.left + rect.width * 0.5
+      const y = anchor.y === 'top' ? rect.top : anchor.y === 'bottom' ? rect.bottom : rect.top + rect.height * 0.5
+      return { x, y }
+    }
+
+    const placeConnection = (connection) => {
+      const scopeRect = flowScopeNode.getBoundingClientRect()
+      const fromRect = connection.fromNode.getBoundingClientRect()
+      const toRect = connection.toNode.getBoundingClientRect()
+      const fromPoint = resolveAnchorPoint(fromRect, connection.fromAnchor)
+      const toPoint = resolveAnchorPoint(toRect, connection.toAnchor)
+      const fromX = fromPoint.x - scopeRect.left
+      const fromY = fromPoint.y - scopeRect.top
+      const toX = toPoint.x - scopeRect.left
+      const toY = toPoint.y - scopeRect.top
+      const distance = Math.hypot(toX - fromX, toY - fromY)
+      const angle = (Math.atan2(toY - fromY, toX - fromX) * 180) / Math.PI
+      connection.distance = distance
+      connection.line.style.left = `${fromX}px`
+      connection.line.style.top = `${fromY}px`
+      connection.line.style.width = `${distance}px`
+      connection.line.style.transform = `translateY(-50%) rotate(${angle}deg)`
+    }
+
+    const timeline = gsap.timeline({
+      onComplete: () => {
+        if (chapterSixAnimationRunIdRef.current === animationRunId) {
+          setIsStepAnimating(false)
+        }
+      },
+      onInterrupt: () => {
+        if (chapterSixAnimationRunIdRef.current === animationRunId) {
+          setIsStepAnimating(false)
+        }
+      },
+    })
+    chapterSixLineTimelineRef.current = timeline
+    const drawDuration = 0.08 * CHAPTER_SIX_FLOW_DURATION_SCALE
+    const dotDuration = 0.08 * CHAPTER_SIX_FLOW_DURATION_SCALE
+    const fadeDuration = 0.05 * CHAPTER_SIX_FLOW_DURATION_SCALE
+    const fadeStart = 0.09 * CHAPTER_SIX_FLOW_DURATION_SCALE
+
+    const createAnimatedConnection = (
+      fromNode,
+      toNode,
+      variant,
+      startAt,
+      fromAnchor = { x: 'right', y: 'center' },
+      toAnchor = { x: 'left', y: 'center' },
+    ) => {
+      if (!fromNode || !toNode) {
+        return
+      }
+      const line = document.createElement('span')
+      line.className = `chapter-six-flow-line chapter-six-flow-line--${variant}`
+      const dot = document.createElement('span')
+      dot.className = `chapter-six-flow-dot chapter-six-flow-dot--${variant}`
+      line.appendChild(dot)
+      flowLayerNode.appendChild(line)
+
+      const connection = {
+        line,
+        dot,
+        fromNode,
+        toNode,
+        fromAnchor,
+        toAnchor,
+        distance: 0,
+      }
+      placeConnection(connection)
+      connections.push(connection)
+
+      timeline.fromTo(
+        line,
+        { opacity: 0, scaleX: 0.08 },
+        { opacity: 0.65, scaleX: 1, duration: drawDuration, ease: 'power2.out' },
+        startAt,
+      )
+      timeline.fromTo(
+        dot,
+        { opacity: 0, x: 0 },
+        {
+          opacity: 0.75,
+          x: () => Math.max(0, connection.distance - 2),
+          duration: dotDuration,
+          ease: 'power1.inOut',
+        },
+        startAt,
+      )
+      timeline.to(line, { opacity: 0, duration: fadeDuration, ease: 'power1.in' }, startAt + fadeStart)
+      timeline.to(dot, { opacity: 0, duration: fadeDuration, ease: 'power1.in' }, startAt + fadeStart)
+    }
+
+    gradientNodes.forEach((gradientNode) => {
+      createAnimatedConnection(lossNode, gradientNode, 'loss-to-grad', 0)
+    })
+
+    gradientNodes.forEach((gradientNode) => {
+      createAnimatedConnection(gradientNode, learningRateNode, 'grad-to-lr', 0)
+    })
+
+    parameterNodes.forEach((parameterNode, index) => {
+      const gradientNode = gradientNodes[index]
+      if (!gradientNode) {
+        return
+      }
+      createAnimatedConnection(learningRateNode, parameterNode, 'lr-to-param', 0)
+    })
+
+    const refreshGeometry = () => {
+      connections.forEach(placeConnection)
+    }
+
+    window.addEventListener('resize', refreshGeometry)
+    equationScrollNode?.addEventListener('scroll', refreshGeometry, { passive: true })
+    gradientScrollNode?.addEventListener('scroll', refreshGeometry, { passive: true })
+    parameterScrollNode?.addEventListener('scroll', refreshGeometry, { passive: true })
+
+    return () => {
+      window.removeEventListener('resize', refreshGeometry)
+      equationScrollNode?.removeEventListener('scroll', refreshGeometry)
+      gradientScrollNode?.removeEventListener('scroll', refreshGeometry)
+      parameterScrollNode?.removeEventListener('scroll', refreshGeometry)
+      chapterSixLineTimelineRef.current?.kill()
+      chapterSixLineTimelineRef.current = null
+      flowLayerNode.innerHTML = ''
+    }
+  }, [reducedMotion, safeCurrentStep, safeSelectedParameterIndex])
+
+  if (!parameterOptions.length || !stepRecords.length) {
+    return (
+      <div className="token-state-card reveal">
+        <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING TRACE</p>
+        <p className="mt-3 text-lg font-bold">Chapter 6 시각화 데이터를 표시할 수 없습니다.</p>
+      </div>
+    )
+  }
+
+  const renderVectorCard = (title, values, variant = 'default', refs = {}) => {
+    const rowRefs = refs?.rowRefs
+    const scrollRef = refs?.scrollRef
+    const maxAbs = values.reduce((maximum, value) => {
+      const numericValue = Number(value)
+      if (!Number.isFinite(numericValue)) {
+        return maximum
+      }
+      return Math.max(maximum, Math.abs(numericValue))
+    }, 0)
+    return (
+      <article className={`chapter-six-vector-card chapter-six-vector-card--${variant}`.trim()}>
+        <p className="chapter-six-vector-title">{title}</p>
+        <div ref={scrollRef || null} className="chapter-six-vector-scroll">
+          <ul className="chapter-six-vector-list">
+            {values.map((value, index) => (
+              (() => {
+                const numericValue = Number(value)
+                const normalizedValue =
+                  Number.isFinite(numericValue) && !Object.is(numericValue, -0) ? numericValue : 0
+                const signVariant =
+                  normalizedValue > 0 ? 'positive' : normalizedValue < 0 ? 'negative' : 'zero'
+                const magnitudeRatio = maxAbs > 0 ? Math.min(1, Math.abs(normalizedValue) / maxAbs) : 0
+                const intensity = signVariant === 'zero' ? '0.1' : (0.14 + magnitudeRatio * 0.18).toFixed(3)
+
+                return (
+                  <li
+                    key={`${title}-${index}`}
+                    ref={(node) => {
+                      if (rowRefs) {
+                        rowRefs.current[index] = node
+                      }
+                    }}
+                    className="chapter-six-vector-row"
+                    style={{ '--chapter-six-row-intensity': intensity }}
+                  >
+                    <span className={`chapter-six-vector-index ${valueTextClass}`}>{index}</span>
+                    <span className="chapter-six-vector-value-shell">
+                      <span className={`chapter-six-vector-fill chapter-six-vector-fill--${signVariant}`} aria-hidden="true" />
+                      <span className={`chapter-six-vector-value ${valueTextClass}`}>{formatValue(normalizedValue, 4)}</span>
+                    </span>
+                  </li>
+                )
+              })()
+            ))}
+          </ul>
+        </div>
+      </article>
+    )
+  }
+
+  return (
+    <div className={`chapter-six-demo-wrap reveal ${reducedMotion ? 'chapter-six-demo-wrap--static' : ''}`}>
+      <div className="chapter-six-controls">
+        <div className="chapter-six-control-row">
+          <div className="chapter-six-nav">
+            <p className="chapter-six-nav-title">목표 Step 선택</p>
+            <div className="chapter-six-nav-inner">
+              <button
+                type="button"
+                className="chapter-six-nav-arrow"
+                onClick={() => moveTargetStepPreset(-1)}
+                aria-label="이전 목표 step 선택"
+              >
+                <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-left" />
+              </button>
+              <p className="chapter-six-nav-pill">
+                <span className="chapter-six-nav-pill-char">{targetStep}</span>
+                <span className="chapter-six-nav-pill-meta">TARGET STEP</span>
+              </p>
+              <button
+                type="button"
+                className="chapter-six-nav-arrow"
+                onClick={() => moveTargetStepPreset(1)}
+                aria-label="다음 목표 step 선택"
+              >
+                <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-right" />
+              </button>
+            </div>
+          </div>
+
+          <div className="chapter-six-slider-shell">
+            <div className="chapter-six-slider-head">
+              <p className="chapter-six-slider-title">진행 Step</p>
+              <p className="chapter-six-slider-value">{`${safeCurrentStep} / ${targetStep}`}</p>
+            </div>
+            <div className="chapter-six-slider-track">
+              <button
+                type="button"
+                className="chapter-six-nav-arrow chapter-six-slider-arrow"
+                onClick={() => onStepNudge(-1)}
+                aria-label="이전 step으로 한 칸 이동"
+              >
+                <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-left" />
+              </button>
+              <input
+                type="range"
+                className="chapter-six-slider"
+                min={0}
+                max={targetStep}
+                step={1}
+                value={safeCurrentStep}
+                onChange={onStepSliderChange}
+                aria-label={`학습 step 선택 슬라이더. 현재 ${safeCurrentStep}, 최대 ${targetStep}`}
+              />
+              <button
+                type="button"
+                className="chapter-six-nav-arrow chapter-six-slider-arrow"
+                onClick={() => onStepNudge(1)}
+                aria-label="다음 step으로 한 칸 이동"
+              >
+                <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-right" />
+              </button>
+            </div>
+          </div>
+
+          <div className="chapter-six-action-row">
+            {hasStarted ? (
+              <button
+                type="button"
+                className="chapter-six-action-btn"
+                onClick={onTogglePlay}
+                aria-label={isPlaying ? '학습 일시 중지' : '학습 재개'}
+              >
+                {isPlaying ? 'PAUSE' : 'RESUME'}
+              </button>
+            ) : (
+              <button type="button" className="chapter-six-action-btn" onClick={onStart} aria-label="학습 시작">
+                START
+              </button>
+            )}
+            <button type="button" className="chapter-six-action-btn" onClick={onReset} aria-label="학습 진행 초기화">
+              RESET
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div ref={chapterSixFlowScopeRef} className="chapter-six-flow-scope">
+        <div className="chapter-six-flow">
+          <div className="chapter-six-left-stack">
+            <article className="chapter-six-word-card" aria-label="현재 학습 단어">
+              <p className="chapter-six-word-title">TRAIN WORD</p>
+              <p className="chapter-six-word-value">{wordText}</p>
+              <p className="chapter-six-word-step">{`STEP ${safeCurrentStep}`}</p>
+            </article>
+
+            <article ref={lossCardRef} className="chapter-six-loss-card" aria-label="현재 loss">
+              <p className="chapter-six-loss-title">LOSS</p>
+              <p className="chapter-six-loss-value">{lossText}</p>
+            </article>
+
+            <article className="chapter-six-loss-trend-card" aria-label="step별 loss 추이">
+              <div className="chapter-six-loss-trend-head">
+                <p className="chapter-six-loss-trend-title">LOSS TREND</p>
+                <p className="chapter-six-loss-trend-meta">{`STEP 1-${targetStep}`}</p>
+              </div>
+              <div className="chapter-six-loss-trend-shell">
+                {lossTrend.pathData ? (
+                  <svg
+                    className="chapter-six-loss-trend-svg"
+                    viewBox={`0 0 ${lossTrend.chartWidth} ${lossTrend.chartHeight}`}
+                    role="img"
+                    aria-label="step별 loss 꺾은선 그래프"
+                  >
+                    <rect
+                      className="chapter-six-loss-trend-bg"
+                      x="0"
+                      y="0"
+                      width={lossTrend.chartWidth}
+                      height={lossTrend.chartHeight}
+                    />
+                    <line
+                      className="chapter-six-loss-trend-guide"
+                      x1="12"
+                      y1={lossTrend.chartHeight * 0.5}
+                      x2={lossTrend.chartWidth - 12}
+                      y2={lossTrend.chartHeight * 0.5}
+                    />
+                    <path className="chapter-six-loss-trend-line" d={lossTrend.pathData} />
+                    {lossTrend.currentPoint ? (
+                      <circle
+                        className="chapter-six-loss-trend-dot"
+                        cx={lossTrend.currentPoint.x}
+                        cy={lossTrend.currentPoint.y}
+                        r="4.2"
+                      />
+                    ) : null}
+                  </svg>
+                ) : (
+                  <p className="chapter-six-loss-trend-empty">loss 데이터가 아직 없습니다.</p>
+                )}
+              </div>
+              <div className="chapter-six-loss-trend-stats">
+                <span>{`MIN ${formatValue(lossTrend.minLoss, 4)}`}</span>
+                <span>{`MAX ${formatValue(lossTrend.maxLoss, 4)}`}</span>
+              </div>
+            </article>
+          </div>
+
+          <section className="chapter-six-update-shell" aria-label="파라미터 업데이트 수식">
+            <div className="chapter-six-update-head">
+              <div className="chapter-six-param-nav">
+                <p className="chapter-six-param-title">예시 파라미터</p>
+                <div className="chapter-six-param-inner">
+                  <button
+                    type="button"
+                    className="chapter-six-nav-arrow"
+                    onClick={() => moveParameter(-1)}
+                    aria-label="이전 파라미터 선택"
+                  >
+                    <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-left" />
+                  </button>
+                  <p className="chapter-six-param-pill">
+                    <span className="chapter-six-param-pill-char">{selectedParameter?.label ?? 'N/A'}</span>
+                    <span className="chapter-six-param-pill-meta">
+                      {selectedParameter ? `${selectedParameter.matrix}[${selectedParameter.row_index}]` : ''}
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    className="chapter-six-nav-arrow"
+                    onClick={() => moveParameter(1)}
+                    aria-label="다음 파라미터 선택"
+                  >
+                    <span className="chapter-six-nav-arrow-shape chapter-six-nav-arrow-shape-right" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div ref={chapterSixEquationScrollRef} className="chapter-six-equation-scroll">
+              <div className="chapter-six-equation-row">
+                {renderVectorCard('Gradient', gradientVector, 'gradient', {
+                  rowRefs: gradientRowRefs,
+                  scrollRef: gradientScrollRef,
+                })}
+
+                <article className="chapter-six-scalar-card" aria-label="learning rate">
+                  <p className="chapter-six-scalar-title">Learning Rate</p>
+                  <p ref={learningRateValueRef} className="chapter-six-scalar-value">
+                    {learningRateText}
+                  </p>
+                </article>
+
+                {renderVectorCard('Parameter', afterVector, 'after', {
+                  rowRefs: parameterRowRefs,
+                  scrollRef: parameterScrollRef,
+                })}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div ref={chapterSixFlowLayerRef} className="chapter-six-flow-layer" aria-hidden="true" />
+      </div>
+    </div>
+  )
+}
+
 const lessonSections = [
   {
     id: 'lesson-1',
@@ -5576,7 +6362,7 @@ const lessonSections = [
     label: 'CHAPTER 05',
     title: 'LOSS AND UPDATE',
     description:
-      '각 POS에서 정답 토큰이 나올 확률을 통해 최종 손실(loss)을 계산합니다. 이 손실을 줄이는 과정이 모델이 학습하는 과정이고, 내부에서는 손실을 역전파(backpropagation)하여 모델의 파라미터를 업데이트합니다.',
+      '각 POS에서 정답 토큰이 나올 확률을 통해 예측과 정답의 차이(손실, loss)를 산출합니다. 각 파라미터(보라색 박스)가 이 손실에 기여하는 정도(gradient)를 역전파(backpropagation)를 통해 계산할 수 있습니다.',
     points: [
       'POS 0부터 마지막 음운 예측 POS까지 next token 확률을 순서대로 확인해요.',
       '각 POS마다 정답 토큰 주변 5개 확률만 세로 리스트로 보여줘요.',
@@ -5584,6 +6370,20 @@ const lessonSections = [
     ],
     takeaway: '학습은 각 POS의 정답 확률을 높이는 방향으로 평균 loss를 줄이는 과정입니다.',
     bgClass: 'bg-white',
+  },
+  {
+    id: 'lesson-6',
+    label: 'CHAPTER 06',
+    title: 'TRAINING',
+    description:
+      '각 파라미터가 손실에 기여하는 정도(gradient)를 활용하여, 모델은 손실을 줄이는 방향으로 반복적으로 파라미터를 조정해나가며 학습합니다.',
+      points: [
+      'step preset(50/100/500/1000)으로 학습 구간을 선택하고 0부터 재생해요.',
+      'pause, reset, 슬라이더로 원하는 step 상태를 직접 확인해요.',
+      '선택한 파라미터의 gradient와 업데이트된 16차원 값을 한 번에 비교해요.',
+    ],
+    takeaway: '표현은 단순한 수식이지만, 실제 값은 Adam 업데이트를 따릅니다.',
+    bgClass: 'bg-neo-muted',
   },
 ]
 
@@ -5600,6 +6400,9 @@ function App() {
   const [attentionSnapshot, setAttentionSnapshot] = useState(null)
   const [attentionStatus, setAttentionStatus] = useState('loading')
   const [attentionError, setAttentionError] = useState('')
+  const [trainingTrace, setTrainingTrace] = useState(null)
+  const [trainingTraceStatus, setTrainingTraceStatus] = useState('loading')
+  const [trainingTraceError, setTrainingTraceError] = useState('')
 
   useEffect(() => {
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -5751,6 +6554,49 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    let isActive = true
+    const controller = new AbortController()
+
+    const loadTrainingTrace = async () => {
+      setTrainingTraceStatus('loading')
+      setTrainingTraceError('')
+
+      try {
+        const response = await fetch('/data/ko_training_trace.json', { signal: controller.signal })
+        if (!response.ok) {
+          throw new Error('failed to fetch training trace')
+        }
+
+        const payload = await response.json()
+        if (!isTrainingTracePayloadValid(payload)) {
+          throw new Error('invalid training trace payload')
+        }
+
+        if (!isActive) {
+          return
+        }
+
+        setTrainingTrace(payload)
+        setTrainingTraceStatus('ready')
+      } catch (error) {
+        if (!isActive || error.name === 'AbortError') {
+          return
+        }
+        setTrainingTrace(null)
+        setTrainingTraceStatus('error')
+        setTrainingTraceError('Training trace 로드 실패')
+      }
+    }
+
+    loadTrainingTrace()
+
+    return () => {
+      isActive = false
+      controller.abort()
+    }
+  }, [])
+
   useLayoutEffect(() => {
     let ctx = null
     if (!reducedMotion) {
@@ -5804,6 +6650,7 @@ function App() {
   const chapterThreeSection = lessonSections[2]
   const chapterFourSection = lessonSections[3]
   const chapterFiveSection = lessonSections[4]
+  const chapterSixSection = lessonSections[5]
 
   return (
     <div ref={pageRef} className="relative overflow-x-clip bg-neo-cream font-space text-black">
@@ -5918,6 +6765,26 @@ function App() {
             <ChapterFiveTrainingDemo snapshot={embeddingSnapshot} reducedMotion={reducedMotion} isMobile={isMobile} />
           ) : null}
         </ChapterFiveSection>
+
+        <ChapterSixSection section={chapterSixSection}>
+          {trainingTraceStatus === 'loading' ? (
+            <div className="token-state-card reveal">
+              <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING TRACE</p>
+              <p className="mt-3 text-lg font-bold">Training trace를 불러오는 중...</p>
+            </div>
+          ) : null}
+
+          {trainingTraceStatus === 'error' ? (
+            <div className="token-state-card reveal">
+              <p className="text-sm font-black uppercase tracking-[0.2em]">TRAINING TRACE</p>
+              <p className="mt-3 text-lg font-bold">{trainingTraceError || 'Training trace 로드 실패'}</p>
+            </div>
+          ) : null}
+
+          {trainingTraceStatus === 'ready' && trainingTrace ? (
+            <ChapterSixTrainingDemo trace={trainingTrace} reducedMotion={reducedMotion} isMobile={isMobile} />
+          ) : null}
+        </ChapterSixSection>
       </main>
 
       <FooterSection />

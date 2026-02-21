@@ -14,6 +14,7 @@ karpathy의 microgpt를 개조한 한글 이름 생성 모델 파트입니다.
 - `model/data/ko_name.txt`: 학습 데이터
 - `model/checkpoints/ko_model.pkl`: 학습 후 저장되는 모델 체크포인트
 - `model/scripts/export_embedding_snapshot.py`: 체크포인트를 프론트 시각화 JSON으로 export
+- `model/scripts/export_training_trace.py`: Chapter 6용 Adam 학습 trace JSON export
 
 ## 사용법
 
@@ -49,3 +50,13 @@ python3 model/scripts/export_embedding_snapshot.py
 출력 파일:
 
 - `app/public/data/ko_embedding_snapshot.json`
+
+### 4) Chapter 6 학습 trace 생성
+
+```bash
+python3 model/scripts/export_training_trace.py
+```
+
+출력 파일:
+
+- `app/public/data/ko_training_trace.json`
