@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import HeroSection from './components/sections/HeroSection'
@@ -231,22 +231,6 @@ const getJamoInfoForChapter3 = (nfdChar) => {
     }
   }
   return { display: nfdChar, roleKey: 'other' }
-}
-
-const getVocabularyTokenLabel = (tokenId, tokenChars, bos, roleLabels) => {
-  if (tokenId === bos) {
-    return '[BOS]'
-  }
-  const tokenChar = tokenChars[tokenId] ?? ''
-  if (!tokenChar) {
-    return `ID ${tokenId}`
-  }
-
-  const jamoInfo = getJamoInfoForChapter3(tokenChar)
-  if (jamoInfo.roleKey && jamoInfo.roleKey !== 'other') {
-    return `${getRoleLabel(jamoInfo.roleKey, roleLabels)} ${jamoInfo.display || tokenChar}`
-  }
-  return jamoInfo.display || tokenChar
 }
 
 const getInferenceTokenDisplay = (tokenId, tokenChars, bos, withRole = false, roleLabels) => {
@@ -4224,6 +4208,14 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
     return sumEmbeddingVectors.map((sumVector) => rmsNormVector(sumVector))
   }, [sumEmbeddingVectors])
 
+  const formatChapterFiveTokenLabel = useCallback(
+    (tokenId) => {
+      const includeRole = !isMobile
+      return getInferenceTokenDisplay(tokenId, tokenChars, bos, includeRole, copy.roles)
+    },
+    [bos, copy.roles, isMobile, tokenChars],
+  )
+
   const trainingRows = useMemo(() => {
     if (!isShapeValid || modelSequence.length < 2) {
       return []
@@ -4285,7 +4277,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
       rows.push({
         pos: queryIndex,
         targetTokenId,
-        targetLabel: getVocabularyTokenLabel(targetTokenId, tokenChars, bos, copy.roles),
+        targetLabel: formatChapterFiveTokenLabel(targetTokenId),
         targetProb,
         tokenLoss: -Math.log(Math.max(targetProb, 1e-12)),
         probVector,
@@ -4295,7 +4287,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
         windowEnd,
         candidateRows: windowTokenIds.map((tokenId, offset) => ({
           tokenId,
-          label: getVocabularyTokenLabel(tokenId, tokenChars, bos, copy.roles),
+          label: formatChapterFiveTokenLabel(tokenId),
           prob: Number(probVector[tokenId] ?? 0),
           rank: windowStart + offset,
           isTarget: tokenId === targetTokenId,
@@ -4309,7 +4301,6 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
     attnWk,
     attnWq,
     attnWv,
-    bos,
     headDim,
     isShapeValid,
     lmHead,
@@ -4318,8 +4309,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
     modelSequence,
     nEmbd,
     nHead,
-    copy.roles,
-    tokenChars,
+    formatChapterFiveTokenLabel,
     xVectors,
   ])
   const safeTargetIndex = trainingRows.length ? clamp(targetIndex, 0, trainingRows.length - 1) : 0
@@ -4430,7 +4420,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
         type: 'column',
         key: `lmhead-col-${tokenId}`,
         tokenId,
-        label: getVocabularyTokenLabel(tokenId, tokenChars, bos, copy.roles),
+        label: formatChapterFiveTokenLabel(tokenId),
         isTarget: tokenId === targetId,
         values: Array.from({ length: nEmbd }, (_, dimIndex) => {
           return logitGrad * Number(selectedRow.blockOutputVector?.[dimIndex] ?? 0)
@@ -4542,7 +4532,6 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
     attnWk,
     attnWq,
     attnWv,
-    bos,
     headDim,
     lmHead,
     mlpFc1,
@@ -4550,26 +4539,20 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
     modelSequence,
     nEmbd,
     nHead,
-    copy.roles,
+    formatChapterFiveTokenLabel,
     safeTargetIndex,
     sumEmbeddingVectors,
-    tokenChars,
     trainingRows,
   ])
 
   const sharedGridStyle = useMemo(() => {
     const columnCount = Math.max(1, trainingRows.length)
-    const style = { '--training-col-count': String(columnCount) }
-    if (!isMobile) {
-      return style
-    }
-    const gapPx = 7
-    const minWidth = columnCount * 160 + Math.max(0, columnCount - 1) * gapPx
+    const mobileColumnCount = columnCount === 2 ? 2 : Math.min(3, columnCount)
     return {
-      ...style,
-      minWidth: `${minWidth}px`,
+      '--training-col-count': String(columnCount),
+      '--training-mobile-col-count': String(mobileColumnCount),
     }
-  }, [isMobile, trainingRows.length])
+  }, [trainingRows.length])
 
   useLayoutEffect(() => {
     const positionCount = trainingRows.length
@@ -5590,7 +5573,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
                     className={`training-backprop-lmhead-head ${item.isTarget ? 'training-backprop-lmhead-head--target' : ''} ${valueTextClass}`.trim()}
                     title={`token #${item.tokenId} · ${item.label}`}
                   >
-                    {item.isTarget ? `${item.label} · ID ${item.tokenId}` : `ID ${item.tokenId}`}
+                    {isMobile ? item.label : item.isTarget ? `${item.label} · ID ${item.tokenId}` : `ID ${item.tokenId}`}
                   </span>
                 )
               })}
@@ -5668,7 +5651,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
             className={`training-backprop-embed-shell training-backprop-embed-card ${isBackpropEmbeddingPairVisible ? '' : 'training-backprop-embed-shell--hidden'}`.trim()}
             aria-label="Token Embedding Gradient"
           >
-            <p className="training-backprop-label">{`Token Embedding Gradient (POS 0 ~ ${safeTargetIndex})`}</p>
+            <p className="training-backprop-label">
+              {safeTargetIndex === 0 ? 'Token Embedding Gradient (POS 0)' : `Token Embedding Gradient (POS 0 ~ ${safeTargetIndex})`}
+            </p>
             {renderEmbeddingGradientTable(
               backpropData.tokenEmbeddingGradMatrix,
               isBackpropEmbeddingPairVisible,
@@ -5683,7 +5668,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
             className={`training-backprop-embed-shell training-backprop-embed-card ${isBackpropEmbeddingPairVisible ? '' : 'training-backprop-embed-shell--hidden'}`.trim()}
             aria-label="Position Embedding Gradient"
           >
-            <p className="training-backprop-label">{`Position Embedding Gradient (POS 0 ~ ${safeTargetIndex})`}</p>
+            <p className="training-backprop-label">
+              {safeTargetIndex === 0 ? 'Position Embedding Gradient (POS 0)' : `Position Embedding Gradient (POS 0 ~ ${safeTargetIndex})`}
+            </p>
             {renderEmbeddingGradientTable(
               backpropData.positionEmbeddingGradMatrix,
               isBackpropEmbeddingPairVisible,
@@ -6011,12 +5998,28 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
       return { x, y }
     }
 
+    const getLossToGradientFromAnchor = () => {
+      if (typeof window === 'undefined') {
+        return { x: 'right', y: 'center' }
+      }
+      return window.matchMedia('(max-width: 1023px)').matches ? { x: 'left', y: 'center' } : { x: 'right', y: 'center' }
+    }
+
+    const resolveAnchor = (anchor, fallback) => {
+      if (typeof anchor === 'function') {
+        return anchor()
+      }
+      return anchor ?? fallback
+    }
+
     const placeConnection = (connection) => {
       const scopeRect = flowScopeNode.getBoundingClientRect()
       const fromRect = connection.fromNode.getBoundingClientRect()
       const toRect = connection.toNode.getBoundingClientRect()
-      const fromPoint = resolveAnchorPoint(fromRect, connection.fromAnchor)
-      const toPoint = resolveAnchorPoint(toRect, connection.toAnchor)
+      const fromAnchor = resolveAnchor(connection.fromAnchor, { x: 'right', y: 'center' })
+      const toAnchor = resolveAnchor(connection.toAnchor, { x: 'left', y: 'center' })
+      const fromPoint = resolveAnchorPoint(fromRect, fromAnchor)
+      const toPoint = resolveAnchorPoint(toRect, toAnchor)
       const fromX = fromPoint.x - scopeRect.left
       const fromY = fromPoint.y - scopeRect.top
       const toX = toPoint.x - scopeRect.left
@@ -6100,7 +6103,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
     }
 
     gradientNodes.forEach((gradientNode) => {
-      createAnimatedConnection(lossNode, gradientNode, 'loss-to-grad', 0)
+      createAnimatedConnection(lossNode, gradientNode, 'loss-to-grad', 0, getLossToGradientFromAnchor)
     })
 
     gradientNodes.forEach((gradientNode) => {

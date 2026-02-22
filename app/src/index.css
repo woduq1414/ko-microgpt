@@ -565,6 +565,7 @@ a {
 
 .token-chip {
   position: relative;
+  z-index: 0;
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
@@ -586,6 +587,7 @@ a {
 }
 
 .token-chip--selected {
+  z-index: 30;
   transform: translate(-1px, -1px);
   box-shadow: 6px 6px 0 0 #000;
   background: #c4b5fd;
@@ -593,6 +595,7 @@ a {
 
 .token-chip:hover,
 .token-chip:focus-visible {
+  z-index: 30;
   transform: translate(-1px, -1px);
   box-shadow: 6px 6px 0 0 #000;
   outline: none;
@@ -629,7 +632,7 @@ a {
   letter-spacing: 0.04em;
   padding: 0.28rem 0.46rem;
   white-space: nowrap;
-  z-index: 20;
+  z-index: 60;
   pointer-events: none;
 }
 
@@ -4674,6 +4677,32 @@ a {
   .attention-decoder-stage {
     min-height: 340px;
   }
+
+  .chapter-seven-queue-row {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    overflow-y: visible;
+  }
+
+  .chapter-seven-queue-chip {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .chapter-seven-path-track {
+    flex-wrap: wrap;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+
+  .chapter-seven-path-item {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
+  .chapter-seven-path-arrow {
+    flex: 0 0 auto;
+  }
 }
 
 @media (max-width: 767px) {
@@ -4746,12 +4775,15 @@ a {
   }
 
   .chapter-seven-path-head {
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0.34rem;
   }
 
   .chapter-seven-path-nav {
-    gap: 0.2rem;
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.28rem;
   }
 
   .chapter-seven-path-arrow-btn {
@@ -4762,8 +4794,10 @@ a {
   }
 
   .chapter-seven-path-pos-pill {
-    min-width: 5.4rem;
+    flex: 1 1 auto;
+    min-width: 0;
     padding: 0.16rem 0.3rem;
+    align-items: center;
   }
 
   .chapter-seven-path-pos-char {
@@ -4772,6 +4806,21 @@ a {
 
   .chapter-seven-path-pos-meta {
     font-size: 0.52rem;
+  }
+
+  .chapter-seven-path-track {
+    flex-wrap: wrap;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+
+  .chapter-seven-path-item {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
+  .chapter-seven-path-arrow {
+    flex: 0 0 auto;
   }
 
   .chapter-seven-prob-head {
@@ -4784,8 +4833,9 @@ a {
     font-size: 1.1rem;
   }
 
-  .training-prob-shell {
-    padding: 0.4rem;
+  .chapter-five-section .training-prob-shell,
+  .chapter-five-section .training-loss-shell {
+    padding: 0.34rem;
   }
 
   .training-nav-pill {
@@ -4801,18 +4851,43 @@ a {
     min-height: 2.8rem;
   }
 
-  .training-prob-strip,
-  .training-loss-grid,
-  .training-backprop-grid,
   .training-backprop-embed-table {
     width: auto;
   }
 
-  .training-backprop-stage {
-    padding: 0.4rem;
+  .chapter-five-section .training-prob-strip,
+  .chapter-five-section .training-loss-grid,
+  .chapter-five-section .training-backprop-grid {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(var(--training-mobile-col-count, 1), minmax(0, 1fr));
+    gap: 0.38rem;
   }
 
-  .training-backprop-scroll {
+  .chapter-five-section .training-prob-row {
+    grid-template-columns: 1.72rem minmax(0, 1fr) auto;
+    gap: 0.12rem;
+    padding: 0.08rem 0.1rem;
+  }
+
+  .chapter-five-section .training-prob-rank {
+    padding: 0.04rem 0;
+  }
+
+  .chapter-five-section .training-prob-col,
+  .chapter-five-section .training-loss-card,
+  .chapter-five-section .training-backprop-card,
+  .chapter-five-section .training-backprop-vector-card {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .chapter-five-section .training-backprop-stage {
+    padding: 0.36rem;
+    gap: 0.32rem;
+  }
+
+  .chapter-five-section .training-backprop-scroll {
     width: 100%;
   }
 
@@ -4825,13 +4900,57 @@ a {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .chapter-five-section .training-backprop-embed-split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chapter-five-section .training-backprop-embed-row {
+    grid-template-columns: 2.45rem repeat(var(--training-embed-col-count, 1), minmax(0, 1fr));
+    gap: 0.12rem;
+  }
+
+  .chapter-five-section .training-backprop-embed-head,
+  .chapter-five-section .training-backprop-embed-dim {
+    padding: 0.06rem 0.08rem;
+  }
+
   .training-backprop-embed-shell--single {
     width: 100%;
   }
 
-  .training-backprop-vector-row {
-    width: auto;
-    min-width: 640px;
+  .chapter-five-section .training-backprop-vector-row {
+    width: 100%;
+    min-width: 0;
+    overflow-x: visible;
+    grid-template-columns: minmax(0, 0.35fr) minmax(0, 0.65fr);
+    gap: 0.36rem;
+  }
+
+  .chapter-six-vector-row {
+    grid-template-columns: 2rem minmax(0, 1fr);
+    gap: 0.24rem;
+  }
+
+  .chapter-five-section .training-mean-card {
+    width: 100%;
+    max-width: 100%;
+    justify-self: stretch;
+    margin-block: 1rem;
+    padding: 0.5rem 0.75rem;
+    box-shadow: 6px 6px 0 0 #000;
+  }
+
+  .chapter-five-section .training-flow-line {
+    height: 5px;
+  }
+
+  .chapter-five-section .training-flow-line--persistent {
+    opacity: 0.5;
+  }
+
+  .chapter-five-section .training-flow-dot {
+    width: 9px;
+    height: 9px;
   }
 
   .training-mean-value {
