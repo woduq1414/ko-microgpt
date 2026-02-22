@@ -1,4 +1,10 @@
 # microgpt
+
+
+
+https://github.com/user-attachments/assets/662174b4-985e-45e5-93b7-4c76f8a8da87
+
+
 <img width="3024" height="1530" alt="image" src="https://github.com/user-attachments/assets/efda1efe-969b-4b95-b783-15716f7da16d" />
 <img width="3024" height="1530" alt="image" src="https://github.com/user-attachments/assets/48d7fd78-b176-478e-9e0d-f19afb1adcdb" />
 <img width="2858" height="1765" alt="image" src="https://github.com/user-attachments/assets/a5198150-646b-4e75-a604-28cd0e990758" />
