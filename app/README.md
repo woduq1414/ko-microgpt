@@ -23,6 +23,18 @@ npm run build
 npm run preview
 ```
 
+## OG Image
+
+- OG 이미지는 Hero 섹션 화면을 캡처해 `app/public/og/hero.png`로 생성합니다.
+- Chromium 브라우저 설치는 한 번만 수행하면 됩니다.
+
+```bash
+npm run og:image:install-browser
+npm run og:image
+```
+
+- Hero 디자인/문구가 바뀌면 `npm run og:image`를 다시 실행해 최신 이미지로 갱신하세요.
+
 ## Data
 
 - 앱은 `app/public/data/*`를 정적 파일로 서빙합니다.

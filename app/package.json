@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "og:image": "node ./scripts/capture-og-hero.mjs",
+    "og:image:install-browser": "playwright install chromium",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -25,6 +27,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "playwright": "^1.52.0",
     "vite": "^7.3.1"
   }
 }
