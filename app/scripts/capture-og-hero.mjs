@@ -11,9 +11,11 @@ const PORT = 4173
 const SERVER_URL = `http://${HOST}:${PORT}`
 const VIEWPORT_WIDTH = 1200
 const VIEWPORT_HEIGHT = 630
+const CROPPED_WIDTH = Math.max(1, Math.floor(VIEWPORT_WIDTH * 0.77))
 const SERVER_READY_TIMEOUT_MS = 30_000
 const SERVER_POLL_INTERVAL_MS = 300
 const SERVER_STOP_TIMEOUT_MS = 5_000
+const POST_LOAD_DELAY_MS = 3_000
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const appDir = path.resolve(scriptDir, '..')
@@ -134,22 +136,30 @@ const captureHeroImage = async () => {
     ])
 
     const page = await context.newPage()
-    await page.goto(SERVER_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 })
-    await page.waitForSelector('#hero', { state: 'visible', timeout: 15_000 })
-    await page.evaluate(async () => {
-      if (document.fonts?.ready) {
-        await document.fonts.ready
-      }
-    })
-    await page.waitForTimeout(400)
+    await page.goto(SERVER_URL, { waitUntil: 'load', timeout: 30_000 })
+    await Promise.all([
+      page.waitForSelector('#hero', { state: 'visible', timeout: 15_000 }),
+      page.evaluate(async () => {
+        if (document.fonts?.ready) {
+          await document.fonts.ready
+        }
+      }),
+      page.waitForTimeout(POST_LOAD_DELAY_MS),
+    ])
     await page.evaluate(() => window.scrollTo(0, 0))
     await page.screenshot({
       path: outputPath,
       type: 'png',
+      clip: {
+        x: 0,
+        y: 0,
+        width: CROPPED_WIDTH,
+        height: VIEWPORT_HEIGHT,
+      },
     })
     await context.close()
 
-    console.log(`[og:image] Generated ${outputPath}`)
+    console.log(`[og:image] Generated ${outputPath} (${CROPPED_WIDTH}x${VIEWPORT_HEIGHT})`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const logTail = logs.slice(-20).join('\n')

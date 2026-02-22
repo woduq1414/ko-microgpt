@@ -66,7 +66,7 @@ function HeroSection({ language, onLanguageChange, copy }) {
       <button
         ref={infoStickerRef}
         type="button"
-        className="hero-info-sticker hero-info-sticker--bottom-right hero-sticker"
+        className="hero-info-sticker hero-info-sticker--bottom-right"
         onClick={() => setIsProjectInfoOpen(true)}
         aria-label={copy.openProjectInfoAria}
         aria-haspopup="dialog"

@@ -167,6 +167,8 @@ a {
   transition:
     transform 100ms linear,
     box-shadow 100ms linear;
+
+  margin-bottom: 0.6rem;
 }
 
 .hero-info-sticker:hover,
