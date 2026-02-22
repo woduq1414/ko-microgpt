@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { Analytics } from '@vercel/analytics/react'
 import HeroSection from './components/sections/HeroSection'
 import ChapterOneSection from './components/sections/ChapterOneSection'
 import ChapterTwoSection from './components/sections/ChapterTwoSection'
@@ -7749,6 +7750,7 @@ function App() {
         />
         <OutroSection copy={copy.outro} />
       </main>
+      <Analytics />
     </div>
   )
 }
