@@ -1,10 +1,40 @@
-# microgpt
+# ko-microgpt
 
 
+## Demo 
 
 https://github.com/user-attachments/assets/662174b4-985e-45e5-93b7-4c76f8a8da87
 
 
+## Summary
+
+This repo contains a Korean name generation model and an educational web app that visualizes and explains it, inspired by [microgpt](https://karpathy.github.io/2026/02/12/microgpt/) of [https://github.com/karpathy](Karpathy).
+Python assets for model training and inference are in `model/`, and the React frontend is in `app/`.
+
+## Directory Overview
+
+- `app/`: Educational scroll-based UI built with React + Vite
+- `model/`: Training/inference code, data, checkpoints, and snapshot export scripts
+
+## Quick Start
+
+### Frontend
+
+```bash
+cd app
+npm install
+npm run dev
+```
+
+### Model
+
+```bash
+python3 model/ko_main.py
+python3 model/ko_inference.py
+```
+
+
+## Screenshots
 <img width="3024" height="1530" alt="image" src="https://github.com/user-attachments/assets/efda1efe-969b-4b95-b783-15716f7da16d" />
 <img width="3024" height="1530" alt="image" src="https://github.com/user-attachments/assets/48d7fd78-b176-478e-9e0d-f19afb1adcdb" />
 <img width="2858" height="1765" alt="image" src="https://github.com/user-attachments/assets/a5198150-646b-4e75-a604-28cd0e990758" />
@@ -14,34 +44,3 @@ https://github.com/user-attachments/assets/662174b4-985e-45e5-93b7-4c76f8a8da87
 <img width="2869" height="2289" alt="image" src="https://github.com/user-attachments/assets/4e287f1d-208d-4a92-8c28-af1f77dfdadc" />
 <img width="2865" height="2031" alt="image" src="https://github.com/user-attachments/assets/cfe0460e-7563-4092-9e38-11644098d152" />
 
-
-
-한글 이름 생성 모델과 이를 시각화/설명하는 교육용 웹 앱을 함께 담은 모노레포입니다.
-Python 모델 학습/추론 자산은 `model/`에, React 프론트엔드는 `app/`에 분리되어 있습니다.
-
-## 디렉터리 역할
-
-- `app/`: React + Vite 기반 교육용 스크롤 UI
-- `model/`: 학습/추론 코드, 데이터, 체크포인트, 스냅샷 export 스크립트
-
-## 빠른 시작
-
-### 프론트엔드
-
-```bash
-cd app
-npm install
-npm run dev
-```
-
-### 모델
-
-```bash
-python3 model/ko_main.py
-python3 model/ko_inference.py
-```
-
-## 문서
-
-- 프론트엔드 문서: `app/README.md`
-- 모델 문서: `model/README.md`
