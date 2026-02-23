@@ -10,7 +10,7 @@ export const ROTATION_STEPS = [-6, -3, -1, 1, 3, 6]
 export const SIZE_CLASSES = ['text-base', 'text-lg', 'text-xl']
 export const EXAMPLE_NAMES_BY_LANG = {
   ko: ['시연', '민준', '나영', '지혜', '승민', '하율', '아희', '유성'],
-  en: ['EMMA', 'OLIVIA', 'LIAM', 'NOAH', 'AVA', 'MIA', 'LUCAS', 'LOGAN'],
+  en: ['EMMA', 'OLIVIA', 'LIAM', 'DOROTHY', 'JAMES', 'EMILY', 'LUCAS', 'LOGAN'],
 }
 export const CHAPTER_TWO_BG_BASE_TOKENS_BY_LANG = {
   ko: [...CHOSEONG_COMPAT, ...JUNGSEONG_COMPAT],

@@ -26,6 +26,7 @@ import {
   buildTokenizerFromRaw,
   getInitialMatch,
   isTrainingTracePayloadValid,
+  parseDatasetNamesFromRaw,
 } from './components/chapters/shared/chapterUtils'
 import { getLessonSectionsForLanguage } from './constants/lessonSections'
 import {
@@ -53,6 +54,7 @@ function App() {
   })
   const [reducedMotion, setReducedMotion] = useState(() => getInitialMatch('(prefers-reduced-motion: reduce)'))
   const [isMobile, setIsMobile] = useState(() => getInitialMatch('(max-width: 767px)'))
+  const [datasetNames, setDatasetNames] = useState([])
   const [chapterTwoTokenizer, setChapterTwoTokenizer] = useState(null)
   const [tokenizerStatus, setTokenizerStatus] = useState('loading')
   const [tokenizerErrorKey, setTokenizerErrorKey] = useState('')
@@ -79,7 +81,7 @@ function App() {
     if (typeof document === 'undefined') {
       return
     }
-    document.title = exampleLanguage === 'en' ? 'ENGLISH MICROGPT LAB' : 'KOREAN MICROGPT LAB'
+    document.title = exampleLanguage === 'en' ? 'MICROGPT LAB' : 'KOREAN MICROGPT LAB'
   }, [exampleLanguage])
 
   useEffect(() => {
@@ -135,6 +137,7 @@ function App() {
     const loadTokenizer = async () => {
       setTokenizerStatus('loading')
       setTokenizerErrorKey('')
+      setDatasetNames([])
 
       try {
         const response = await fetch(`/data/${exampleLanguage}_name.txt`, { signal: controller.signal })
@@ -143,12 +146,14 @@ function App() {
         }
         const rawText = await response.text()
         const tokenizer = buildTokenizerFromRaw(rawText, exampleLanguage)
+        const parsedNames = parseDatasetNamesFromRaw(rawText, exampleLanguage)
 
         if (!isActive) {
           return
         }
 
         setChapterTwoTokenizer(tokenizer)
+        setDatasetNames(parsedNames)
         setTokenizerStatus('ready')
       } catch (error) {
         if (!isActive || error.name === 'AbortError') {
@@ -156,6 +161,7 @@ function App() {
         }
 
         setChapterTwoTokenizer(null)
+        setDatasetNames([])
         setTokenizerStatus('error')
         setTokenizerErrorKey('tokenMapLoadFailed')
       }
@@ -363,11 +369,44 @@ function App() {
   const chapterEightSection = lessonSections[7]
   const exampleNames = EXAMPLE_NAMES_BY_LANG[exampleLanguage] ?? EXAMPLE_NAMES_BY_LANG.ko
   const chapterOneNames = useMemo(() => {
-    if (!exampleNames.length) {
+    const displayName = (name) => (exampleLanguage === 'en' ? String(name).toUpperCase() : String(name))
+    const normalizedKey = (name) => (exampleLanguage === 'en' ? String(name).toUpperCase() : String(name))
+    const merged = []
+    const seen = new Set()
+
+    const pushUnique = (name) => {
+      const trimmed = typeof name === 'string' ? name.trim() : ''
+      if (!trimmed) {
+        return
+      }
+      const key = normalizedKey(trimmed)
+      if (seen.has(key)) {
+        return
+      }
+      seen.add(key)
+      merged.push(displayName(trimmed))
+    }
+
+    exampleNames.forEach(pushUnique)
+    datasetNames.forEach(pushUnique)
+
+    if (!merged.length) {
       return []
     }
-    return Array.from({ length: 40 }, (_, index) => exampleNames[index % exampleNames.length])
-  }, [exampleNames])
+
+    const targetCount = 40
+    if (merged.length >= targetCount) {
+      return merged.slice(0, targetCount)
+    }
+
+    const result = [...merged]
+    let fillIndex = 0
+    while (result.length < targetCount) {
+      result.push(merged[fillIndex % merged.length])
+      fillIndex += 1
+    }
+    return result
+  }, [datasetNames, exampleLanguage, exampleNames])
   const chapterExampleNames = useMemo(() => {
     return exampleNames.slice(0, 8)
   }, [exampleNames])
