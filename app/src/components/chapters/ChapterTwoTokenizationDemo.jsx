@@ -1,15 +1,35 @@
 import { useLayoutEffect, useMemo, useState } from 'react'
 import gsap from 'gsap'
-import { CHAPTER_TWO_EXAMPLE_NAMES } from './shared/chapterConstants'
-import { decomposeKoreanNameToNfdTokens, formatTokenId, getRoleLabel } from './shared/chapterUtils'
+import {
+  decomposeNameToModelTokens,
+  formatTokenId,
+  getRoleLabel,
+} from './shared/chapterUtils'
 
-function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile, copy }) {
+function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile, copy, exampleNames = [], exampleLanguage = 'ko' }) {
   const [exampleNameIndex, setExampleNameIndex] = useState(0)
   const [selectedTokenId, setSelectedTokenId] = useState(null)
   const [hoveredTokenId, setHoveredTokenId] = useState(null)
 
-  const currentExampleName = CHAPTER_TWO_EXAMPLE_NAMES[exampleNameIndex]
-  const decomposition = useMemo(() => decomposeKoreanNameToNfdTokens(currentExampleName), [currentExampleName])
+  const safeExampleNames = useMemo(() => {
+    const filtered = Array.isArray(exampleNames)
+      ? exampleNames
+          .map((name) => (typeof name === 'string' ? name.trim() : ''))
+          .filter(Boolean)
+      : []
+    return filtered.length ? filtered : ['']
+  }, [exampleNames])
+
+  const showRoleDetails = exampleLanguage === 'ko'
+  const safeExampleNameIndex = safeExampleNames.length
+    ? ((exampleNameIndex % safeExampleNames.length) + safeExampleNames.length) % safeExampleNames.length
+    : 0
+  const currentExampleName = safeExampleNames[safeExampleNameIndex] ?? ''
+  const displayExampleName = exampleLanguage === 'en' ? currentExampleName.toUpperCase() : currentExampleName
+  const decomposition = useMemo(
+    () => decomposeNameToModelTokens(currentExampleName, exampleLanguage),
+    [currentExampleName, exampleLanguage],
+  )
 
   const tokenSequence = useMemo(() => {
     const phonemeTokens = decomposition.tokens.map((token, index) => {
@@ -73,8 +93,10 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile, copy }
   const handleTokenSelect = (tokenId) => setSelectedTokenId(tokenId)
   const moveExampleName = (direction) => {
     setExampleNameIndex((prevIndex) => {
-      const nextIndex = (prevIndex + direction + CHAPTER_TWO_EXAMPLE_NAMES.length) % CHAPTER_TWO_EXAMPLE_NAMES.length
-      return nextIndex
+      if (safeExampleNames.length <= 1) {
+        return 0
+      }
+      return (prevIndex + direction + safeExampleNames.length) % safeExampleNames.length
     })
     setSelectedTokenId(null)
     setHoveredTokenId(null)
@@ -96,7 +118,7 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile, copy }
             <span className="token-name-arrow-shape token-name-arrow-shape-left" />
           </button>
 
-          <p className="token-name-pill">{currentExampleName}</p>
+          <p className="token-name-pill">{displayExampleName || '-'}</p>
 
           <button
             type="button"
@@ -108,32 +130,34 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile, copy }
           </button>
         </div>
 
-       
         <p className="mt-5 inline-block border-4 border-black bg-neo-accent px-3 py-2 text-xs font-black uppercase tracking-[0.2em]">
           TOKEN SEQUENCE
         </p>
         <div className="token-chip-list">
-          {tokenSequence.map((token) => (
-            <button
-              key={token.id}
-              type="button"
-              className={`token-chip ${token.isBos ? 'token-chip--bos' : ''} ${selectedTokenId === token.id ? 'token-chip--selected' : ''}`}
-              onMouseEnter={() => handleTokenHoverStart(token.id)}
-              onMouseLeave={handleTokenHoverEnd}
-              onFocus={() => handleTokenHoverStart(token.id)}
-              onBlur={handleTokenHoverEnd}
-              onClick={() => handleTokenSelect(token.id)}
-              aria-label={copy.chapter2.tokenChipAria(token.display, getRoleLabel(token.roleKey, roleLabels), formatTokenId(token.tokenId))}
-            >
-              <span className="token-chip-symbol">{token.display}</span>
-              <span className="token-chip-meta">{getRoleLabel(token.roleKey, roleLabels)}</span>
-              {hoveredTokenId === token.id ? (
-                <span className={`token-tooltip ${isMobile ? 'token-tooltip-mobile' : ''}`}>
-                  ID {formatTokenId(token.tokenId)}
-                </span>
-              ) : null}
-            </button>
-          ))}
+          {tokenSequence.map((token) => {
+            const roleLabel = showRoleDetails ? getRoleLabel(token.roleKey, roleLabels) : ''
+            return (
+              <button
+                key={token.id}
+                type="button"
+                className={`token-chip ${token.isBos ? 'token-chip--bos' : ''} ${selectedTokenId === token.id ? 'token-chip--selected' : ''}`}
+                onMouseEnter={() => handleTokenHoverStart(token.id)}
+                onMouseLeave={handleTokenHoverEnd}
+                onFocus={() => handleTokenHoverStart(token.id)}
+                onBlur={handleTokenHoverEnd}
+                onClick={() => handleTokenSelect(token.id)}
+                aria-label={copy.chapter2.tokenChipAria(token.display, roleLabel, formatTokenId(token.tokenId))}
+              >
+                <span className="token-chip-symbol">{token.display}</span>
+                {showRoleDetails ? <span className="token-chip-meta">{roleLabel}</span> : null}
+                {hoveredTokenId === token.id ? (
+                  <span className={`token-tooltip ${isMobile ? 'token-tooltip-mobile' : ''}`}>
+                    ID {formatTokenId(token.tokenId)}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -145,14 +169,18 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile, copy }
               {selectedToken.display}
             </p>
 
-            <div className="token-inspector-row">
-              <span>{copy.chapter2.roleLabel}</span>
-              <strong>{getRoleLabel(selectedToken.roleKey, roleLabels)}</strong>
-            </div>
-            <div className="token-inspector-row">
-              <span>{copy.chapter2.syllableLabel}</span>
-              <strong>{selectedToken.syllable}</strong>
-            </div>
+            {showRoleDetails ? (
+              <>
+                <div className="token-inspector-row">
+                  <span>{copy.chapter2.roleLabel}</span>
+                  <strong>{getRoleLabel(selectedToken.roleKey, roleLabels)}</strong>
+                </div>
+                <div className="token-inspector-row">
+                  <span>{copy.chapter2.syllableLabel}</span>
+                  <strong>{selectedToken.syllable}</strong>
+                </div>
+              </>
+            ) : null}
             <div className="token-inspector-row">
               <span>Token ID</span>
               <strong>{formatTokenId(selectedToken.tokenId)}</strong>
@@ -167,6 +195,5 @@ function ChapterTwoTokenizationDemo({ tokenizer, reducedMotion, isMobile, copy }
     </div>
   )
 }
-
 
 export default ChapterTwoTokenizationDemo

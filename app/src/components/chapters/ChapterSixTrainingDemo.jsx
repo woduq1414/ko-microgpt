@@ -10,7 +10,7 @@ import {
 import { clamp, getRoleLabel, hasNumericVector } from './shared/chapterUtils'
 import SectionStateCard from '../common/SectionStateCard'
 
-function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
+function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy, exampleLanguage = 'ko' }) {
   const stepOptions = useMemo(() => {
     const raw = Array.isArray(trace?.step_options) ? trace.step_options : CHAPTER_SIX_DEFAULT_STEP_OPTIONS
     const normalized = raw
@@ -213,6 +213,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
   const lossText = safeCurrentStep === 0 || currentRecord?.loss == null ? 'PRE' : formatValue(currentRecord.loss, 4)
   const learningRateText = formatValue(currentRecord?.learning_rate ?? 0, 6)
   const wordText = typeof currentRecord?.word === 'string' && currentRecord.word ? currentRecord.word : 'N/A'
+  const displayWordText = exampleLanguage === 'en' ? wordText.toUpperCase() : wordText
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
   const lossTrend = useMemo(() => {
     const chartWidth = CHAPTER_SIX_LOSS_CHART_WIDTH
@@ -635,7 +636,7 @@ function ChapterSixTrainingDemo({ trace, reducedMotion, isMobile, copy }) {
           <div className="chapter-six-left-stack">
             <article className="chapter-six-word-card" aria-label={copy.chapter6.currentWordAria}>
               <p className="chapter-six-word-title">TRAIN WORD</p>
-              <p className="chapter-six-word-value">{wordText}</p>
+              <p className="chapter-six-word-value">{displayWordText}</p>
               <p className="chapter-six-word-step">{`STEP ${safeCurrentStep}`}</p>
             </article>
 

@@ -1,8 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import gsap from 'gsap'
-import { clamp, getHeatColor, getJamoInfoForChapter3, getRoleLabel, rmsNormVector } from './shared/chapterUtils'
+import {
+  clamp,
+  getHeatColor,
+  getJamoInfoForChapter3,
+  getRoleLabel,
+  rmsNormVector,
+  toTokenDisplayChar,
+} from './shared/chapterUtils'
 
-function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile, copy }) {
+function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile, copy, exampleLanguage = 'ko' }) {
   const tokenChars = snapshot?.tokenizer?.uchars ?? []
   const tokenCount = tokenChars.length
   const nEmbd = Number(snapshot?.n_embd ?? 16)
@@ -454,8 +461,9 @@ function ChapterThreeEmbeddingDemo({ snapshot, reducedMotion, isMobile, copy }) 
     setOpenInfoKey(null)
   }
   const jamoInfo = getJamoInfoForChapter3(tokenChars[safeTokenIndex])
-  const displayChar = jamoInfo.display
-  const displayRole = getRoleLabel(jamoInfo.roleKey, copy.roles)
+  const displayChar = toTokenDisplayChar(jamoInfo.display || tokenChars[safeTokenIndex] || '', exampleLanguage)
+  const shouldShowRolePrefix = exampleLanguage === 'ko' && jamoInfo.roleKey && jamoInfo.roleKey !== 'other'
+  const displayRole = shouldShowRolePrefix ? getRoleLabel(jamoInfo.roleKey, copy.roles) : ''
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
   const columns = [
     {

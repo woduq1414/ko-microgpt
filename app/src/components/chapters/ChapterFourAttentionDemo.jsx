@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import gsap from 'gsap'
 import {
   ATTENTION_HIDDEN_PLACEHOLDER,
-  CHAPTER_FOUR_EXAMPLE_NAMES,
   LOGIT_PARTIAL_COMMIT_STEP,
 } from './shared/chapterConstants'
 import {
@@ -10,18 +9,26 @@ import {
   createRevealMatrix,
   createRevealMatrixWithVisibleRows,
   createRevealVector,
-  decomposeKoreanNameToNfdTokens,
+  decomposeNameToModelTokens,
   dotProduct,
+  formatTokenDisplayWithRole,
   getHeatColor,
-  getJamoInfoForChapter3,
-  getRoleLabel,
+  getInferenceTokenDisplay,
   matVec,
   rmsNormVector,
   sliceHead,
   softmaxNumbers,
 } from './shared/chapterUtils'
 
-function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile, copy }) {
+function ChapterFourAttentionDemo({
+  snapshot,
+  attention,
+  reducedMotion,
+  isMobile,
+  copy,
+  exampleNames = [],
+  exampleLanguage = 'ko',
+}) {
   const tokenChars = useMemo(() => snapshot?.tokenizer?.uchars ?? [], [snapshot])
   const bos = Number(snapshot?.tokenizer?.bos ?? -1)
   const nEmbd = Number(snapshot?.n_embd ?? 16)
@@ -113,7 +120,19 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const probRowRefs = useRef([])
   const probValueRefs = useRef([])
   const timelineRef = useRef(null)
-  const currentExampleName = CHAPTER_FOUR_EXAMPLE_NAMES[exampleNameIndex]
+  const safeExampleNames = useMemo(() => {
+    const filtered = Array.isArray(exampleNames)
+      ? exampleNames
+          .map((name) => (typeof name === 'string' ? name.trim() : ''))
+          .filter(Boolean)
+      : []
+    return filtered.length ? filtered : ['']
+  }, [exampleNames])
+  const safeExampleNameIndex = safeExampleNames.length
+    ? ((exampleNameIndex % safeExampleNames.length) + safeExampleNames.length) % safeExampleNames.length
+    : 0
+  const currentExampleName = safeExampleNames[safeExampleNameIndex] ?? ''
+  const displayExampleName = exampleLanguage === 'en' ? currentExampleName.toUpperCase() : currentExampleName
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
 
   const isShapeValid =
@@ -146,7 +165,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
     if (!isShapeValid) {
       return []
     }
-    const decomposition = decomposeKoreanNameToNfdTokens(currentExampleName)
+    const decomposition = decomposeNameToModelTokens(currentExampleName, exampleLanguage)
     const sequence = [{ tokenId: bos, label: '[BOS]' }]
     decomposition.tokens.forEach((token) => {
       const tokenId = stoi[token.nfd]
@@ -155,7 +174,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
       }
       sequence.push({
         tokenId,
-        label: `${getRoleLabel(token.roleKey, copy.roles)} ${token.display}`.trim(),
+        label: formatTokenDisplayWithRole(token, copy.roles, true),
       })
     })
 
@@ -165,7 +184,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
         position,
       }
     })
-  }, [blockSize, bos, copy.roles, currentExampleName, isShapeValid, stoi])
+  }, [blockSize, bos, copy.roles, currentExampleName, exampleLanguage, isShapeValid, stoi])
   const hasAttentionData = isShapeValid && modelSequence.length > 0
 
   useEffect(() => {
@@ -341,31 +360,9 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
   const logitsVector = lmHead.length ? matVec(transformerBlockOutputVector, lmHead) : []
   const probVector = softmaxNumbers(logitsVector)
   const vocabularyRows = logitsVector.map((value, tokenId) => {
-    if (tokenId === bos) {
-      return {
-        tokenId,
-        label: '[BOS]',
-        logit: Number(value ?? 0),
-        prob: Number(probVector[tokenId] ?? 0),
-      }
-    }
-    const tokenChar = tokenChars[tokenId] ?? ''
-    if (!tokenChar) {
-      return {
-        tokenId,
-        label: `ID ${tokenId}`,
-        logit: Number(value ?? 0),
-        prob: Number(probVector[tokenId] ?? 0),
-      }
-    }
-    const jamoInfo = getJamoInfoForChapter3(tokenChar)
-    const tokenLabel =
-      jamoInfo.roleKey && jamoInfo.roleKey !== 'other'
-        ? `${getRoleLabel(jamoInfo.roleKey, copy.roles)} ${jamoInfo.display || tokenChar}`
-        : jamoInfo.display || tokenChar
     return {
       tokenId,
-      label: tokenLabel,
+      label: getInferenceTokenDisplay(tokenId, tokenChars, bos, true, copy.roles, exampleLanguage),
       logit: Number(value ?? 0),
       prob: Number(probVector[tokenId] ?? 0),
     }
@@ -1788,8 +1785,10 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
 
   const moveExampleName = (direction) => {
     setExampleNameIndex((prevIndex) => {
-      const nextIndex = (prevIndex + direction + CHAPTER_FOUR_EXAMPLE_NAMES.length) % CHAPTER_FOUR_EXAMPLE_NAMES.length
-      return nextIndex
+      if (safeExampleNames.length <= 1) {
+        return 0
+      }
+      return (prevIndex + direction + safeExampleNames.length) % safeExampleNames.length
     })
     setActiveTraceTarget(null)
     setIsTraceReady(false)
@@ -1978,7 +1977,7 @@ function ChapterFourAttentionDemo({ snapshot, attention, reducedMotion, isMobile
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
             </button>
             <p className="attention-nav-pill">
-              <span className="attention-nav-pill-char">{currentExampleName}</span>
+              <span className="attention-nav-pill-char">{displayExampleName || '-'}</span>
               <span className="attention-nav-pill-meta">{`POS 0 ~ ${Math.max(0, modelSequence.length - 1)}`}</span>
             </p>
             <button

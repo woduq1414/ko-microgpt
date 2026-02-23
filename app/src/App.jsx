@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { Analytics } from '@vercel/analytics/react'
@@ -21,16 +21,36 @@ import ChapterThreeSection from './components/sections/ChapterThreeSection'
 import ChapterTwoSection from './components/sections/ChapterTwoSection'
 import HeroSection from './components/sections/HeroSection'
 import OutroSection from './components/sections/OutroSection'
-import { CHAPTER_ONE_NAMES } from './components/chapters/shared/chapterConstants'
-import { buildTokenizerFromRaw, getInitialMatch, isTrainingTracePayloadValid } from './components/chapters/shared/chapterUtils'
-import { LESSON_SECTIONS_BY_LANG } from './constants/lessonSections'
-import { COPY_BY_LANG, detectDefaultLanguage, readLanguageCookie, writeLanguageCookie } from './constants/localization'
+import { EXAMPLE_NAMES_BY_LANG } from './components/chapters/shared/chapterConstants'
+import {
+  buildTokenizerFromRaw,
+  getInitialMatch,
+  isTrainingTracePayloadValid,
+} from './components/chapters/shared/chapterUtils'
+import { getLessonSectionsForLanguage } from './constants/lessonSections'
+import {
+  COPY_BY_LANG,
+  getExampleLanguageFromPathname,
+  getPathnameForExampleLanguage,
+  readDescriptionLanguageCookie,
+  writeDescriptionLanguageCookie,
+} from './constants/localization'
 
 gsap.registerPlugin(ScrollTrigger)
 
 function App() {
   const pageRef = useRef(null)
-  const [language, setLanguage] = useState(() => readLanguageCookie() ?? detectDefaultLanguage())
+  const [exampleLanguage, setExampleLanguage] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'ko'
+    }
+    return getExampleLanguageFromPathname(window.location.pathname)
+  })
+  const [descriptionLanguage, setDescriptionLanguage] = useState(() => {
+    const detectedExampleLanguage =
+      typeof window === 'undefined' ? 'ko' : getExampleLanguageFromPathname(window.location.pathname)
+    return readDescriptionLanguageCookie() ?? detectedExampleLanguage
+  })
   const [reducedMotion, setReducedMotion] = useState(() => getInitialMatch('(prefers-reduced-motion: reduce)'))
   const [isMobile, setIsMobile] = useState(() => getInitialMatch('(max-width: 767px)'))
   const [chapterTwoTokenizer, setChapterTwoTokenizer] = useState(null)
@@ -45,18 +65,51 @@ function App() {
   const [trainingTrace, setTrainingTrace] = useState(null)
   const [trainingTraceStatus, setTrainingTraceStatus] = useState('loading')
   const [trainingTraceErrorKey, setTrainingTraceErrorKey] = useState('')
-  const copy = COPY_BY_LANG[language] ?? COPY_BY_LANG.en
-  const lessonSections = LESSON_SECTIONS_BY_LANG[language] ?? LESSON_SECTIONS_BY_LANG.en
+  const copy = COPY_BY_LANG[descriptionLanguage] ?? COPY_BY_LANG.en
+  const lessonSections = useMemo(
+    () => getLessonSectionsForLanguage(descriptionLanguage, exampleLanguage),
+    [descriptionLanguage, exampleLanguage],
+  )
 
   useEffect(() => {
-    writeLanguageCookie(language)
-  }, [language])
+    writeDescriptionLanguageCookie(descriptionLanguage)
+  }, [descriptionLanguage])
 
-  const onLanguageChange = (nextLanguage) => {
-    if (nextLanguage !== 'ko' && nextLanguage !== 'en') {
+  useEffect(() => {
+    if (typeof document === 'undefined') {
       return
     }
-    setLanguage(nextLanguage)
+    document.title = exampleLanguage === 'en' ? 'ENGLISH MICROGPT LAB' : 'KOREAN MICROGPT LAB'
+  }, [exampleLanguage])
+
+  useEffect(() => {
+    const onPopState = () => {
+      setExampleLanguage(getExampleLanguageFromPathname(window.location.pathname))
+    }
+
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+    }
+  }, [])
+
+  const onLanguageSettingsConfirm = ({ exampleLanguage: nextExampleLanguage, descriptionLanguage: nextDescriptionLanguage }) => {
+    if (nextDescriptionLanguage === 'ko' || nextDescriptionLanguage === 'en') {
+      setDescriptionLanguage(nextDescriptionLanguage)
+    }
+
+    if (nextExampleLanguage !== 'ko' && nextExampleLanguage !== 'en') {
+      return
+    }
+    if (nextExampleLanguage === exampleLanguage) {
+      return
+    }
+
+    const nextPathname = getPathnameForExampleLanguage(nextExampleLanguage)
+    if (window.location.pathname !== nextPathname) {
+      window.history.pushState({}, '', `${nextPathname}${window.location.search}${window.location.hash}`)
+    }
+    setExampleLanguage(nextExampleLanguage)
   }
 
   useEffect(() => {
@@ -84,12 +137,12 @@ function App() {
       setTokenizerErrorKey('')
 
       try {
-        const response = await fetch('/data/ko_name.txt', { signal: controller.signal })
+        const response = await fetch(`/data/${exampleLanguage}_name.txt`, { signal: controller.signal })
         if (!response.ok) {
           throw new Error('failed to fetch dataset')
         }
         const rawText = await response.text()
-        const tokenizer = buildTokenizerFromRaw(rawText)
+        const tokenizer = buildTokenizerFromRaw(rawText, exampleLanguage)
 
         if (!isActive) {
           return
@@ -114,7 +167,7 @@ function App() {
       isActive = false
       controller.abort()
     }
-  }, [])
+  }, [exampleLanguage])
 
   useEffect(() => {
     let isActive = true
@@ -127,7 +180,7 @@ function App() {
       setAttentionErrorKey('')
 
       try {
-        const response = await fetch('/data/ko_embedding_snapshot.json', { signal: controller.signal })
+        const response = await fetch(`/data/${exampleLanguage}_embedding_snapshot.json`, { signal: controller.signal })
         if (!response.ok) {
           throw new Error('failed to fetch embedding snapshot')
         }
@@ -207,7 +260,7 @@ function App() {
       isActive = false
       controller.abort()
     }
-  }, [])
+  }, [exampleLanguage])
 
   useEffect(() => {
     let isActive = true
@@ -218,7 +271,7 @@ function App() {
       setTrainingTraceErrorKey('')
 
       try {
-        const response = await fetch('/data/ko_training_trace.json', { signal: controller.signal })
+        const response = await fetch(`/data/${exampleLanguage}_training_trace.json`, { signal: controller.signal })
         if (!response.ok) {
           throw new Error('failed to fetch training trace')
         }
@@ -250,7 +303,7 @@ function App() {
       isActive = false
       controller.abort()
     }
-  }, [])
+  }, [exampleLanguage])
 
   useLayoutEffect(() => {
     let ctx = null
@@ -308,6 +361,16 @@ function App() {
   const chapterSixSection = lessonSections[5]
   const chapterSevenSection = lessonSections[6]
   const chapterEightSection = lessonSections[7]
+  const exampleNames = EXAMPLE_NAMES_BY_LANG[exampleLanguage] ?? EXAMPLE_NAMES_BY_LANG.ko
+  const chapterOneNames = useMemo(() => {
+    if (!exampleNames.length) {
+      return []
+    }
+    return Array.from({ length: 40 }, (_, index) => exampleNames[index % exampleNames.length])
+  }, [exampleNames])
+  const chapterExampleNames = useMemo(() => {
+    return exampleNames.slice(0, 8)
+  }, [exampleNames])
 
   return (
     <div ref={pageRef} className="relative overflow-x-clip bg-neo-cream font-space text-black">
@@ -318,19 +381,24 @@ function App() {
         <div className="scroll-progress-fill h-full w-full origin-top scale-y-0 bg-neo-accent" />
       </div>
 
-      <HeroSection language={language} onLanguageChange={onLanguageChange} copy={copy.hero} />
+      <HeroSection
+        exampleLanguage={exampleLanguage}
+        descriptionLanguage={descriptionLanguage}
+        onLanguageSettingsConfirm={onLanguageSettingsConfirm}
+        copy={copy.hero}
+      />
 
       <main>
         <ChapterOneSection
           section={chapterOneSection}
-          dataCloud={<ChapterOneDataCloud names={CHAPTER_ONE_NAMES} reducedMotion={reducedMotion} isMobile={isMobile} />}
+          dataCloud={<ChapterOneDataCloud names={chapterOneNames} reducedMotion={reducedMotion} isMobile={isMobile} />}
           corePointsLabel={copy.chapterOne.corePointsLabel}
           takeawayLabel={copy.chapterOne.takeawayLabel}
         />
 
         <ChapterTwoSection
           section={chapterTwoSection}
-          jamoCloud={<ChapterTwoJamoCloud reducedMotion={reducedMotion} isMobile={isMobile} />}
+          jamoCloud={<ChapterTwoJamoCloud reducedMotion={reducedMotion} isMobile={isMobile} exampleLanguage={exampleLanguage} />}
         >
           <AsyncChapterContent
             status={tokenizerStatus}
@@ -340,10 +408,13 @@ function App() {
           >
             {chapterTwoTokenizer ? (
               <ChapterTwoTokenizationDemo
+                key={`chapter2-demo-${exampleLanguage}`}
                 tokenizer={chapterTwoTokenizer}
                 reducedMotion={reducedMotion}
                 isMobile={isMobile}
                 copy={copy}
+                exampleNames={chapterExampleNames}
+                exampleLanguage={exampleLanguage}
               />
             ) : null}
           </AsyncChapterContent>
@@ -358,10 +429,12 @@ function App() {
           >
             {embeddingSnapshot ? (
               <ChapterThreeEmbeddingDemo
+                key={`chapter3-demo-${exampleLanguage}`}
                 snapshot={embeddingSnapshot}
                 reducedMotion={reducedMotion}
                 isMobile={isMobile}
                 copy={copy}
+                exampleLanguage={exampleLanguage}
               />
             ) : null}
           </AsyncChapterContent>
@@ -376,11 +449,14 @@ function App() {
           >
             {embeddingSnapshot && attentionSnapshot ? (
               <ChapterFourAttentionDemo
+                key={`chapter4-demo-${exampleLanguage}`}
                 snapshot={embeddingSnapshot}
                 attention={attentionSnapshot}
                 reducedMotion={reducedMotion}
                 isMobile={isMobile}
                 copy={copy}
+                exampleNames={chapterExampleNames}
+                exampleLanguage={exampleLanguage}
               />
             ) : null}
           </AsyncChapterContent>
@@ -395,10 +471,13 @@ function App() {
           >
             {embeddingSnapshot ? (
               <ChapterFiveTrainingDemo
+                key={`chapter5-demo-${exampleLanguage}`}
                 snapshot={embeddingSnapshot}
                 reducedMotion={reducedMotion}
                 isMobile={isMobile}
                 copy={copy}
+                exampleNames={chapterExampleNames}
+                exampleLanguage={exampleLanguage}
               />
             ) : null}
           </AsyncChapterContent>
@@ -413,10 +492,12 @@ function App() {
           >
             {trainingTrace ? (
               <ChapterSixTrainingDemo
+                key={`chapter6-demo-${exampleLanguage}`}
                 trace={trainingTrace}
                 reducedMotion={reducedMotion}
                 isMobile={isMobile}
                 copy={copy}
+                exampleLanguage={exampleLanguage}
               />
             ) : null}
           </AsyncChapterContent>
@@ -431,10 +512,12 @@ function App() {
           >
             {embeddingSnapshot ? (
               <ChapterSevenInferenceDemo
+                key={`chapter7-demo-${exampleLanguage}`}
                 snapshot={embeddingSnapshot}
                 reducedMotion={reducedMotion}
                 isMobile={isMobile}
                 copy={copy}
+                exampleLanguage={exampleLanguage}
               />
             ) : null}
           </AsyncChapterContent>
@@ -445,7 +528,7 @@ function App() {
           similarityLabel={copy.chapterEight.similarityLabel}
           differenceLabel={copy.chapterEight.differenceLabel}
         />
-        <OutroSection copy={copy.outro} />
+        <OutroSection copy={copy.outro} exampleLanguage={exampleLanguage} />
       </main>
       <Analytics />
     </div>

@@ -240,27 +240,27 @@ export const LESSON_SECTIONS_BY_LANG = {
       label: 'CHAPTER 08',
       title: 'REAL GPT',
       description:
-        'microgpt (the model covered on this site) is a simplified version that exposes GPT\'s algorithmic skeleton, while real GPT scales the same principles with massive data, hardware, and post-processing pipelines.',
+        'Microgpt (the model covered on this site) is a simplified version that exposes GPT\'s algorithmic skeleton, while real GPT scales the same principles with massive data, hardware, and post-processing pipelines.',
       points: [
         {
           topic: 'Data',
           similarity: 'Both learn text distributions to predict the next token, and data quality strongly impacts model quality.',
-          difference: 'microgpt uses a small name dataset, while real GPT trains on trillion-scale corpora from web/books/code after deduplication, quality filtering, and domain mixing.',
+          difference: 'Microgpt uses a small name dataset, while real GPT trains on trillion-scale corpora from web/books/code after deduplication, quality filtering, and domain mixing.',
         },
         {
           topic: 'Tokenization',
           similarity: 'Both convert strings into integer token sequences and then embeddings.',
-          difference: 'microgpt uses character/phoneme-level tokenization with a small vocabulary, while real GPT uses BPE-family subword tokenizers with around ~100k vocabulary.',
+          difference: 'Microgpt uses character/phoneme-level tokenization with a small vocabulary, while real GPT uses BPE-family subword tokenizers with around ~100k vocabulary.',
         },
         {
           topic: 'Embedding',
           similarity: 'Both combine token embedding and position information into transformer input representations.',
-          difference: 'microgpt focuses on low-dimensional dense embeddings, while real GPT combines high-dimensional embeddings, RoPE, and normalization/scaling strategies for long-context stability.',
+          difference: 'Microgpt focuses on low-dimensional dense embeddings, while real GPT combines high-dimensional embeddings, RoPE, and normalization/scaling strategies for long-context stability.',
         },
         {
           topic: 'Model Architecture',
           similarity: 'Both share transformer blocks built from Attention, MLP, and residual connections.',
-          difference: 'microgpt is around thousands of parameters and one layer, while real GPT scales to hundreds of billions of parameters and hundreds of layers with optimizations like GQA, gated activations, and MoE.',
+          difference: 'Microgpt is around thousands of parameters and one layer, while real GPT scales to hundreds of billions of parameters and hundreds of layers with optimizations like GQA, gated activations, and MoE.',
         },
         {
           topic: 'Training Method',
@@ -276,4 +276,161 @@ export const LESSON_SECTIONS_BY_LANG = {
       bgClass: 'bg-white',
     },
   ],
+}
+
+const LESSON_SECTION_OVERRIDES_BY_EXAMPLE_LANG = {
+  en: {
+    ko: {
+      'lesson-1': {
+        points: [
+          '영어 이름 샘플을 모아 학습 데이터셋을 만들어요.',
+          '각 이름은 모델이 읽는 하나의 문서(document)예요.',
+          '문서 수가 많을수록 이름 패턴을 더 안정적으로 배워요.',
+        ],
+      },
+      'lesson-2': {
+        description:
+          '모델이 이름을 만드는 방법을 배우게 하기 위해, 이름을 문자 단위로 나누고 각 문자에 고유한 번호(토큰 ID)를 부여해 모델이 읽을 수 있는 형태로 바꿨어요. 이름의 시작과 끝에는 [BOS]라는 특수한 토큰을 추가해 어디가 시작과 끝인지 알려줘요.',
+        points: [
+          '좌우 화살표로 예시 이름을 바꿔가며 토큰화를 확인해요.',
+          '각 문자 토큰에는 모델이 참조하는 고유 번호(token id)가 매핑돼요.',
+          'BOS 토큰은 이름 시퀀스가 시작된다는 것을 알려주는 특수 토큰이에요.',
+        ],
+        takeaway: '이름을 문자 + 번호 시퀀스로 바꾸면, 모델이 계산 가능한 입력으로 이해할 수 있어요.',
+      },
+      'lesson-3': {
+        description: '토큰 임베딩과 위치 임베딩을 더해 모델 입력 임베딩을 만듭니다. 어떤 문자가 어느 위치에 놓였는지에 따라 최종 벡터가 달라집니다.',
+        takeaway: '같은 문자라도 위치가 바뀌면 입력 임베딩이 달라집니다.',
+      },
+      'lesson-5': {
+        points: [
+          'POS 0부터 마지막 토큰 예측 POS까지 next token 확률을 순서대로 확인해요.',
+          '각 POS마다 정답 토큰 주변 5개 확률만 세로 리스트로 보여줘요.',
+          '아래에서 POS별 token loss와 평균 loss를 함께 확인해요.',
+        ],
+      },
+      'lesson-7': {
+        description:
+          '학습된 모델을 이용해 실제로 새로운 이름을 만듭니다. 각 POS에서 얻은 다음 토큰 확률 분포에서 랜덤으로 토큰을 뽑아 문자를 순차적으로 생성합니다.',
+      },
+      'lesson-8': {
+        points: [
+          {
+            topic: '데이터',
+            similarity: '둘 다 다음에 나올 토큰을 예측하는 목적으로 텍스트 분포를 학습하며, 데이터 품질이 모델 품질을 크게 좌우합니다.',
+            difference: 'microgpt는 소규모 이름 데이터셋을 다루지만 real GPT는 웹·도서·코드 등 조 단위의 토큰 규모 코퍼스를 중복 제거, 품질 필터링, 도메인 믹싱 후 학습합니다.',
+          },
+          {
+            topic: '토큰화',
+            similarity: '둘 다 문자열을 정수 토큰 시퀀스로 변환한 뒤 임베딩으로 바꿉니다.',
+            difference: 'microgpt는 문자 단위 토큰화로 수 십개 정도의 vocabulary를 사용하지만, real GPT는 BPE 계열 subword tokenizer를 사용해 약 10만 개 내외 vocabulary를 사용합니다.',
+          },
+          {
+            topic: '임베딩',
+            similarity: '둘 다 token embedding과 position 정보를 결합해 Transformer 입력 표현을 만듭니다.',
+            difference: 'microgpt는 저차원 dense embedding 중심이지만 real GPT는 고차원 임베딩, RoPE(회전 위치 인코딩), 정규화/스케일링 전략을 결합해 긴 문맥 안정성을 높입니다.',
+          },
+          {
+            topic: '모델 구조',
+            similarity: '둘 다 Attention과 MLP, 잔차 연결이 활용 된 Transformer 블록 구조를 공유합니다.',
+            difference: 'microgpt는 수천 파라미터·1개 레이어 수준이고, real GPT는 수천억 파라미터·수백 개 레이어로 확장되며 GQA, gated activation, MoE 같은 최적화 블록이 추가됩니다.',
+          },
+          {
+            topic: '학습 방식',
+            similarity: '둘 다 loss를 최소화하도록 역전파와 Adam 계열 optimizer로 파라미터를 업데이트합니다.',
+            difference: 'real GPT는 대규모 pretraining 이후 post-training(SFT, RLHF/RLAIF 계열 preference optimization)을 거쳐 지시 수행 능력·응답 품질·안전성 정렬을 강화합니다.',
+          },
+          {
+            topic: '추론',
+            similarity: '둘 다 autoregressive decoding으로 다음 토큰을 한 스텝씩 생성합니다.',
+            difference: 'real GPT는 대규모 동시 요청을 처리하기 위해 batching, KV cache paging, quantization, speculative decoding, multi-GPU 분산 서빙을 결합한 별도 inference stack이 필요합니다.',
+          },
+        ],
+      },
+    },
+    en: {
+      'lesson-1': {
+        points: [
+          'We collect English name samples to build a training dataset.',
+          'Each name is one document read by the model.',
+          'More documents help the model learn name patterns more stably.',
+        ],
+      },
+      'lesson-2': {
+        description:
+          'To let the model learn how names are formed, each name is split into character units, and each character is mapped to a unique token ID so the model can process it. A special [BOS] token is added at the start and end to mark boundaries.',
+        points: [
+          'Use left/right arrows to switch example names and inspect tokenization.',
+          'Each character token is mapped to a unique token id used by the model.',
+          'The BOS token is a special marker indicating sequence boundaries.',
+        ],
+        takeaway: 'Converting names into character + id sequences makes them computable model inputs.',
+      },
+      'lesson-3': {
+        description:
+          'The model input embedding is built by adding token embedding and position embedding. The final vector changes depending on which character appears at which position.',
+        takeaway: 'Even the same character gets a different input embedding when position changes.',
+      },
+      'lesson-7': {
+        description:
+          'With the trained model, we generate new names by sampling tokens from next-token probability distributions at each POS and building names character by character.',
+      },
+      'lesson-8': {
+        points: [
+          {
+            topic: 'Data',
+            similarity: 'Both learn text distributions to predict the next token, and data quality strongly impacts model quality.',
+            difference: 'microgpt uses a small name dataset, while real GPT trains on trillion-scale corpora from web/books/code after deduplication, quality filtering, and domain mixing.',
+          },
+          {
+            topic: 'Tokenization',
+            similarity: 'Both convert strings into integer token sequences and then embeddings.',
+            difference: 'microgpt uses character-level tokenization with a small vocabulary, while real GPT uses BPE-family subword tokenizers with around ~100k vocabulary.',
+          },
+          {
+            topic: 'Embedding',
+            similarity: 'Both combine token embedding and position information into transformer input representations.',
+            difference: 'microgpt focuses on low-dimensional dense embeddings, while real GPT combines high-dimensional embeddings, RoPE, and normalization/scaling strategies for long-context stability.',
+          },
+          {
+            topic: 'Model Architecture',
+            similarity: 'Both share transformer blocks built from Attention, MLP, and residual connections.',
+            difference: 'microgpt is around thousands of parameters and one layer, while real GPT scales to hundreds of billions of parameters and hundreds of layers with optimizations like GQA, gated activations, and MoE.',
+          },
+          {
+            topic: 'Training Method',
+            similarity: 'Both update parameters through backpropagation and Adam-family optimizers to minimize loss.',
+            difference: 'real GPT uses post-training (SFT and preference optimization such as RLHF/RLAIF) after large-scale pretraining to improve instruction-following, response quality, and safety alignment.',
+          },
+          {
+            topic: 'Inference',
+            similarity: 'Both generate tokens autoregressively one step at a time.',
+            difference: 'real GPT requires a separate large-scale inference stack combining batching, KV cache paging, quantization, speculative decoding, and multi-GPU distributed serving.',
+          },
+        ],
+      },
+    },
+  },
+}
+
+export const getLessonSectionsForLanguage = (descriptionLanguage = 'en', exampleLanguage = 'ko') => {
+  const normalizedDescriptionLanguage = descriptionLanguage === 'ko' ? 'ko' : 'en'
+  const normalizedExampleLanguage = exampleLanguage === 'en' ? 'en' : 'ko'
+  const baseSections = LESSON_SECTIONS_BY_LANG[normalizedDescriptionLanguage] ?? LESSON_SECTIONS_BY_LANG.en
+  const overrides = LESSON_SECTION_OVERRIDES_BY_EXAMPLE_LANG[normalizedExampleLanguage]?.[normalizedDescriptionLanguage]
+
+  if (!overrides) {
+    return baseSections
+  }
+
+  return baseSections.map((section) => {
+    const sectionOverride = overrides[section.id]
+    if (!sectionOverride) {
+      return section
+    }
+    return {
+      ...section,
+      ...sectionOverride,
+    }
+  })
 }

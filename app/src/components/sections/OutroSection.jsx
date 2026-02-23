@@ -1,4 +1,7 @@
-function OutroSection({ copy }) {
+function OutroSection({ copy, exampleLanguage = 'ko' }) {
+  const resolvedExampleLanguage = exampleLanguage === 'en' ? 'en' : 'ko'
+  const message = copy?.messageByExampleLanguage?.[resolvedExampleLanguage] ?? copy?.message ?? ''
+
   return (
     <section id="outro" className="snap-section edu-panel relative flex min-h-screen items-center border-b-8 border-black bg-neo-secondary">
       <div aria-hidden="true" className="absolute inset-0 texture-grid opacity-45" />
@@ -6,7 +9,7 @@ function OutroSection({ copy }) {
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-center justify-center px-6 py-16 text-center md:px-12">
         <p className="reveal max-w-4xl -rotate-1 border-4 border-black bg-neo-cream p-6 text-2xl font-black leading-relaxed shadow-[8px_8px_0px_0px_#000] md:text-3xl">
-          {copy.message}
+          {message}
         </p>
 
         <div className="reveal mt-8 flex flex-wrap justify-center gap-4">

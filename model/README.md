@@ -12,9 +12,12 @@ karpathy의 microgpt를 개조한 한글 이름 생성 모델 파트입니다.
 - `model/ko_main.py`: 데이터 로드 -> 학습 -> 체크포인트 저장 -> 샘플 추론
 - `model/ko_inference.py`: 저장된 체크포인트를 불러와 추론만 수행
 - `model/data/ko_name.txt`: 학습 데이터
+- `model/data/en_name.txt`: 영어 학습 데이터
 - `model/checkpoints/ko_model.pkl`: 학습 후 저장되는 모델 체크포인트
+- `model/checkpoints/en_model.pkl`: 영어 학습 후 저장되는 모델 체크포인트
 - `model/scripts/export_embedding_snapshot.py`: 체크포인트를 프론트 시각화 JSON으로 export
 - `model/scripts/export_training_trace.py`: Chapter 6용 Adam 학습 trace JSON export
+- `model/scripts/generate_en_assets.py`: 영어 데이터셋 다운로드(필요시) + 영어 학습 + 영어 snapshot/trace export
 
 ## 사용법
 
@@ -60,3 +63,17 @@ python3 model/scripts/export_training_trace.py
 출력 파일:
 
 - `app/public/data/ko_training_trace.json`
+
+### 5) 영어 데이터 전체 생성
+
+```bash
+python3 model/scripts/generate_en_assets.py
+```
+
+출력 파일:
+
+- `model/data/en_name.txt` (없으면 자동 다운로드)
+- `model/checkpoints/en_model.pkl`
+- `app/public/data/en_name.txt`
+- `app/public/data/en_embedding_snapshot.json`
+- `app/public/data/en_training_trace.json`

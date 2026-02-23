@@ -1,5 +1,6 @@
 export const SUPPORTED_LANGUAGES = ['ko', 'en']
-export const LANG_COOKIE_KEY = 'microgpt_lang'
+export const DESC_LANG_COOKIE_KEY = 'microgpt_desc_lang'
+export const LEGACY_LANG_COOKIE_KEY = 'microgpt_lang'
 export const LANG_COOKIE_MAX_AGE = 31536000
 
 const normalizeLanguage = (value) => {
@@ -7,50 +8,73 @@ const normalizeLanguage = (value) => {
   return SUPPORTED_LANGUAGES.includes(normalized) ? normalized : null
 }
 
-export const detectDefaultLanguage = () => {
-  if (typeof navigator === 'undefined') {
+export const getExampleLanguageFromPathname = (pathname) => {
+  const normalizedPath = typeof pathname === 'string' ? pathname.toLowerCase() : ''
+  if (normalizedPath === '/en' || normalizedPath.startsWith('/en/')) {
     return 'en'
   }
-  return navigator.language?.toLowerCase().startsWith('ko') ? 'ko' : 'en'
+  return 'ko'
 }
 
-export const readLanguageCookie = () => {
+export const getPathnameForExampleLanguage = (language) => {
+  return normalizeLanguage(language) === 'en' ? '/en' : '/ko'
+}
+
+export const readDescriptionLanguageCookie = () => {
   if (typeof document === 'undefined') {
     return null
   }
 
   const cookieChunks = document.cookie ? document.cookie.split(';') : []
+  let legacyLanguage = null
   for (const chunk of cookieChunks) {
     const [rawName, ...rawValueParts] = chunk.trim().split('=')
-    if (rawName !== LANG_COOKIE_KEY) {
-      continue
-    }
     const decodedValue = decodeURIComponent(rawValueParts.join('='))
     const language = normalizeLanguage(decodedValue)
-    if (language) {
+    if (!language) {
+      continue
+    }
+    if (rawName === DESC_LANG_COOKIE_KEY) {
       return language
+    }
+    if (rawName === LEGACY_LANG_COOKIE_KEY) {
+      legacyLanguage = language
     }
   }
 
-  return null
+  return legacyLanguage
 }
 
-export const writeLanguageCookie = (language) => {
+export const writeDescriptionLanguageCookie = (language) => {
   const normalizedLanguage = normalizeLanguage(language)
   if (!normalizedLanguage || typeof document === 'undefined') {
     return
   }
 
-  document.cookie = `${LANG_COOKIE_KEY}=${encodeURIComponent(normalizedLanguage)}; max-age=${LANG_COOKIE_MAX_AGE}; path=/; samesite=lax`
+  document.cookie = `${DESC_LANG_COOKIE_KEY}=${encodeURIComponent(normalizedLanguage)}; max-age=${LANG_COOKIE_MAX_AGE}; path=/; samesite=lax`
 }
 
 export const COPY_BY_LANG = {
   ko: {
     hero: {
       languageSwitchAria: '언어 선택',
+      openLanguageSettingsAria: 'Open language settings',
+      closeLanguageSettingsAria: 'Close language settings',
+      languageButtonText: 'Language',
+      languageModalTitle: 'LANGUAGE SETTINGS',
+      exampleLanguageLabel: 'Example Language',
+      descriptionLanguageLabel: 'Description Language',
+      languageOptionKo: 'Korean',
+      languageOptionEn: 'English',
+      confirmLanguageButton: 'Confirm',
+      cancelLanguageButton: 'Cancel',
       openProjectInfoAria: '프로젝트 정보 열기',
       closeProjectInfoAria: '프로젝트 정보 닫기',
       intro: '한국어 이름 생성 GPT가 어떻게 데이터를 읽고, 새로운 이름을 생성하는 지 알아볼까요?',
+      introByExampleLanguage: {
+        ko: '한국어 이름 생성 GPT가 어떻게 데이터를 읽고, 새로운 이름을 생성하는 지 알아볼까요?',
+        en: '영어 이름 생성 GPT가 어떻게 데이터를 읽고, 새로운 이름을 생성하는 지 알아볼까요?',
+      },
       startFromData: 'Start From Data',
       goToGithub: 'Go To Github',
       projectInfoTitle: 'PROJECT INFO',
@@ -58,6 +82,10 @@ export const COPY_BY_LANG = {
       projectInfoMiddle: '의 ',
       projectInfoMicrogptLinkText: 'microgpt 프로젝트',
       projectInfoEnd: '를 기반으로, 한국어 이름을 생성하는 GPT 모델의 내부 동작 과정을 시각화 한 프로젝트입니다.',
+      projectInfoEndByExampleLanguage: {
+        ko: '를 기반으로, 한국어 이름을 생성하는 GPT 모델의 내부 동작 과정을 시각화 한 프로젝트입니다.',
+        en: '를 기반으로, 영어 이름을 생성하는 GPT 모델의 내부 동작 과정을 시각화 한 프로젝트입니다.',
+      },
       projectInfoGithub: 'Go To Github of this website',
     },
     roles: {
@@ -78,6 +106,10 @@ export const COPY_BY_LANG = {
     },
     outro: {
       message: '한국어 이름을 만드는 microgpt의 과정에 대해 전부 알아보셨습니다!',
+      messageByExampleLanguage: {
+        ko: '한국어 이름을 만드는 microgpt의 과정에 대해 전부 알아보셨습니다!',
+        en: '영어 이름을 만드는 microgpt의 과정에 대해 전부 알아보셨습니다!',
+      },
       backToTop: '처음으로 돌아가기',
       goToGithub: 'Go To Github',
     },
@@ -219,9 +251,23 @@ export const COPY_BY_LANG = {
   en: {
     hero: {
       languageSwitchAria: 'Language selection',
+      openLanguageSettingsAria: 'Open language settings',
+      closeLanguageSettingsAria: 'Close language settings',
+      languageButtonText: 'Language',
+      languageModalTitle: 'LANGUAGE SETTINGS',
+      exampleLanguageLabel: 'Example Language',
+      descriptionLanguageLabel: 'Description Language',
+      languageOptionKo: 'Korean',
+      languageOptionEn: 'English',
+      confirmLanguageButton: 'Confirm',
+      cancelLanguageButton: 'Cancel',
       openProjectInfoAria: 'Open project info',
       closeProjectInfoAria: 'Close project info',
       intro: 'Want to see how a Korean name generation GPT reads data and creates new names?',
+      introByExampleLanguage: {
+        ko: 'Want to see how a Korean name generation GPT reads data and creates new names?',
+        en: 'Want to see how an English name generation GPT reads data and creates new names?',
+      },
       startFromData: 'Start From Data',
       goToGithub: 'Go To Github',
       projectInfoTitle: 'PROJECT INFO',
@@ -229,6 +275,10 @@ export const COPY_BY_LANG = {
       projectInfoMiddle: "'s ",
       projectInfoMicrogptLinkText: 'microgpt project',
       projectInfoEnd: ', and visualizes the internal process of a GPT model that generates Korean names.',
+      projectInfoEndByExampleLanguage: {
+        ko: ', and visualizes the internal process of a GPT model that generates Korean names.',
+        en: ', and visualizes the internal process of a GPT model that generates English names.',
+      },
       projectInfoGithub: 'Go To this website Github',
     },
     roles: {
@@ -249,6 +299,10 @@ export const COPY_BY_LANG = {
     },
     outro: {
       message: 'You have now explored the full process of how microgpt creates Korean names!',
+      messageByExampleLanguage: {
+        ko: 'You have now explored the full process of how microgpt creates Korean names!',
+        en: 'You have now explored the full process of how microgpt creates English names!',
+      },
       backToTop: 'Back To Start',
       goToGithub: 'Go To Github',
     },

@@ -1,48 +1,3 @@
-export const CHAPTER_ONE_NAMES = [
-  '민준',
-  '나영',
-  '아희',
-  '지혜',
-  '시연',
-  '규민',
-  '승민',
-  '희태',
-  '준식',
-  '서준',
-  '도윤',
-  '예준',
-  '시우',
-  '주원',
-  '하준',
-  '지호',
-  '지후',
-  '준우',
-  '현우',
-  '준서',
-  '도현',
-  '지훈',
-  '건우',
-  '우진',
-  '선우',
-  '민재',
-  '현준',
-  '유준',
-  '서진',
-  '연우',
-  '은우',
-  '정우',
-  '시윤',
-  '준혁',
-  '승현',
-  '이준',
-  '승우',
-  '지환',
-  '민성',
-  '윤우',
-]
-
-export const CHAPTER_TWO_EXAMPLE_NAMES = ['시연', '민준', '나영', '지혜', '승민', '하율', '아희', '유성']
-export const CHAPTER_FOUR_EXAMPLE_NAMES = ['시연', '민준', '나영', '지혜', '승민', '하율', '아희', '유성']
 export const CHOSEONG_COMPAT = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
 export const JUNGSEONG_COMPAT = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ']
 export const JONGSEONG_COMPAT = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
@@ -53,7 +8,14 @@ export const LAYER_DEPTHS = [1, 1.6, 2.2]
 export const CHAPTER_TWO_LAYER_DEPTHS = [0.65, 1.0, 1.35]
 export const ROTATION_STEPS = [-6, -3, -1, 1, 3, 6]
 export const SIZE_CLASSES = ['text-base', 'text-lg', 'text-xl']
-export const CHAPTER_TWO_BG_BASE_JAMO = [...CHOSEONG_COMPAT, ...JUNGSEONG_COMPAT]
+export const EXAMPLE_NAMES_BY_LANG = {
+  ko: ['시연', '민준', '나영', '지혜', '승민', '하율', '아희', '유성'],
+  en: ['EMMA', 'OLIVIA', 'LIAM', 'NOAH', 'AVA', 'MIA', 'LUCAS', 'LOGAN'],
+}
+export const CHAPTER_TWO_BG_BASE_TOKENS_BY_LANG = {
+  ko: [...CHOSEONG_COMPAT, ...JUNGSEONG_COMPAT],
+  en: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
+}
 export const EMBEDDING_POSITIVE_BASE = '#e9fce9'
 export const EMBEDDING_POSITIVE_STRONG = '#22c55e'
 export const EMBEDDING_NEGATIVE_BASE = '#feeaea'

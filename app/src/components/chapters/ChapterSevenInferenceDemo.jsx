@@ -26,7 +26,7 @@ import {
 } from './shared/chapterUtils'
 import SectionStateCard from '../common/SectionStateCard'
 
-function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile, copy }) {
+function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile, copy, exampleLanguage = 'ko' }) {
   const tokenChars = useMemo(() => snapshot?.tokenizer?.uchars ?? [], [snapshot])
   const bos = Number(snapshot?.tokenizer?.bos ?? -1)
   const nEmbd = Number(snapshot?.n_embd ?? 0)
@@ -216,7 +216,7 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile, copy }) 
       return {
         kind: 'token',
         tokenId,
-        label: getInferenceTokenDisplay(tokenId, tokenChars, bos, true, copy.roles),
+        label: getInferenceTokenDisplay(tokenId, tokenChars, bos, true, copy.roles, exampleLanguage),
         prob: Number(probVector[tokenId] ?? 0),
         rank,
         isSampled: tokenId === sampledTokenId,
@@ -290,15 +290,16 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile, copy }) 
       }
 
       const jamoText = sampledChars.join('')
-      const name = jamoText.normalize('NFC')
-      if (!name || !steps.length) {
+      const rawName = jamoText.normalize('NFC')
+      if (!rawName || !steps.length) {
         continue
       }
+      const displayName = exampleLanguage === 'en' ? rawName.toUpperCase() : rawName
 
       sampleCounterRef.current += 1
       return {
         id: `inference-${Date.now()}-${sampleCounterRef.current}`,
-        name,
+        name: displayName,
         jamoText,
         tokenPath,
         steps,
@@ -400,10 +401,10 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile, copy }) 
     ? clamp(chapter7PathVisibleCount, 0, selectedSample.tokenPath.length)
     : 0
   const selectedNameTokenLabel = currentStep
-    ? getInferenceTokenDisplay(currentStep.sampledTokenId, tokenChars, bos, true, copy.roles)
+    ? getInferenceTokenDisplay(currentStep.sampledTokenId, tokenChars, bos, true, copy.roles, exampleLanguage)
     : '[BOS]'
   const selectedInputTokenLabel = currentStep
-    ? getInferenceTokenDisplay(currentStep.inputTokenId, tokenChars, bos, true, copy.roles)
+    ? getInferenceTokenDisplay(currentStep.inputTokenId, tokenChars, bos, true, copy.roles, exampleLanguage)
     : '[BOS]'
   const currentOutputPathIndex = safeCurrentPosIndex + 1
   const isPathNavigationLocked = !hasSequenceAnimationCompleted || isSequenceAnimating || !selectedSteps.length
@@ -798,7 +799,9 @@ function ChapterSevenInferenceDemo({ snapshot, reducedMotion, isMobile, copy }) 
                         disabled={!isClickable}
                         aria-label={copy.chapter7.tokenViewAria(tokenIndex)}
                       >
-                        {isVisible ? getInferenceTokenDisplay(tokenId, tokenChars, bos, true, copy.roles) : ATTENTION_HIDDEN_PLACEHOLDER}
+                        {isVisible
+                          ? getInferenceTokenDisplay(tokenId, tokenChars, bos, true, copy.roles, exampleLanguage)
+                          : ATTENTION_HIDDEN_PLACEHOLDER}
                       </button>
                       {tokenIndex < selectedSample.tokenPath.length - 1 ? <span className="chapter-seven-path-arrow">→</span> : null}
                     </span>

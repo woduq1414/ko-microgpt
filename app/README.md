@@ -38,13 +38,24 @@ npm run og:image
 ## Data
 
 - 앱은 `app/public/data/*`를 정적 파일로 서빙합니다.
-- `app/public/data/ko_name.txt`는 프론트 표시용 데이터입니다.
-- 모델 체크포인트 기반 시각화 데이터(`ko_embedding_snapshot.json`)를 갱신하려면 저장소 루트에서 아래 명령을 실행합니다.
-- Chapter 6 학습 trace 데이터(`ko_training_trace.json`)를 갱신하려면 저장소 루트에서 아래 명령을 실행합니다.
+- 예제 언어 URL 규칙:
+  - `/` 또는 `/ko`: 한국어 예제 데이터
+  - `/en`: 영어 예제 데이터
+- 설명 언어(문구)는 Language 모달에서 별도로 선택되며 쿠키(`microgpt_desc_lang`)로 저장됩니다.
+- 데이터 파일은 언어별 접두사로 분리됩니다.
+  - `app/public/data/ko_*`
+  - `app/public/data/en_*`
+- 한국어 모델 체크포인트 기반 시각화 데이터(`ko_embedding_snapshot.json`) 및 trace(`ko_training_trace.json`)를 갱신하려면 저장소 루트에서 아래 명령을 실행합니다.
 
 ```bash
 python3 model/scripts/export_embedding_snapshot.py
 python3 model/scripts/export_training_trace.py
+```
+
+- 영어 데이터/체크포인트/스냅샷/trace를 한 번에 생성하려면 아래 명령을 실행합니다.
+
+```bash
+python3 model/scripts/generate_en_assets.py
 ```
 
 - 모델 학습/추론 절차는 `model/README.md`를 참고하세요.

@@ -45,18 +45,48 @@ export const getRoleLabel = (roleKey, roleLabels) => {
   return roleLabels?.[roleKey] ?? roleKey
 }
 
-export const buildTokenizerFromRaw = (rawText) => {
+const normalizeExampleLanguage = (language) => (language === 'en' ? 'en' : 'ko')
+
+export const toTokenDisplayChar = (char, exampleLanguage = 'ko') => {
+  const safeChar = typeof char === 'string' ? char : ''
+  if (!safeChar) {
+    return ''
+  }
+  if (normalizeExampleLanguage(exampleLanguage) === 'en') {
+    return safeChar.toUpperCase()
+  }
+  return safeChar
+}
+
+export const parseDatasetNamesFromRaw = (rawText, language = 'ko') => {
   const rawDocs = rawText
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .filter(Boolean)
 
-  const hangulDocs = rawDocs.filter((name) => /^[가-힣]+$/u.test(name))
-  if (!hangulDocs.length) {
+  if (normalizeExampleLanguage(language) === 'en') {
+    return rawDocs
+      .map((name) => name.toLowerCase())
+      .filter((name) => /^[a-z]+$/u.test(name))
+  }
+
+  return rawDocs.filter((name) => /^[가-힣]+$/u.test(name))
+}
+
+export const buildTokenizerFromRaw = (rawText, language = 'ko') => {
+  const normalizedLanguage = normalizeExampleLanguage(language)
+  const datasetNames = parseDatasetNamesFromRaw(rawText, normalizedLanguage)
+  if (!datasetNames.length) {
+    if (normalizedLanguage === 'en') {
+      throw new Error('No valid English names found in dataset.')
+    }
     throw new Error('No valid Hangul names found in dataset.')
   }
 
-  const docs = hangulDocs.map((name) => name.normalize('NFD'))
+  const docs =
+    normalizedLanguage === 'ko'
+      ? datasetNames.map((name) => name.normalize('NFD'))
+      : datasetNames
   const uchars = [...new Set(docs.join(''))].sort()
   const stoi = Object.fromEntries(uchars.map((char, index) => [char, index]))
 
@@ -64,6 +94,42 @@ export const buildTokenizerFromRaw = (rawText) => {
     stoi,
     bos: uchars.length,
   }
+}
+
+export const formatTokenDisplayWithRole = (token, roleLabels, includeRole = true) => {
+  if (!token) {
+    return ''
+  }
+  const display = String(token.display ?? '')
+  if (!includeRole || !token.roleKey || token.roleKey === 'other') {
+    return display
+  }
+  return `${getRoleLabel(token.roleKey, roleLabels)} ${display}`.trim()
+}
+
+export const decomposeNameToModelTokens = (name, language = 'ko') => {
+  if (normalizeExampleLanguage(language) !== 'ko') {
+    const normalized = typeof name === 'string' ? name.trim().toLowerCase() : ''
+    const tokens = [...normalized].flatMap((char) => {
+      if (!/[a-z]/u.test(char)) {
+        return []
+      }
+      return [
+        {
+          roleKey: 'other',
+          syllable: char,
+          nfd: char,
+          display: toTokenDisplayChar(char, 'en'),
+        },
+      ]
+    })
+    return {
+      syllables: [],
+      tokens,
+    }
+  }
+
+  return decomposeKoreanNameToNfdTokens(name)
 }
 
 export const decomposeKoreanNameToNfdTokens = (name) => {
@@ -148,7 +214,14 @@ export const getJamoInfoForChapter3 = (nfdChar) => {
   return { display: nfdChar, roleKey: 'other' }
 }
 
-export const getInferenceTokenDisplay = (tokenId, tokenChars, bos, withRole = false, roleLabels) => {
+export const getInferenceTokenDisplay = (
+  tokenId,
+  tokenChars,
+  bos,
+  withRole = false,
+  roleLabels,
+  exampleLanguage = 'ko',
+) => {
   if (tokenId === bos) {
     return '[BOS]'
   }
@@ -157,10 +230,11 @@ export const getInferenceTokenDisplay = (tokenId, tokenChars, bos, withRole = fa
     return `ID ${tokenId}`
   }
   const jamoInfo = getJamoInfoForChapter3(tokenChar)
+  const displayChar = toTokenDisplayChar(jamoInfo.display || tokenChar, exampleLanguage)
   if (withRole && jamoInfo.roleKey && jamoInfo.roleKey !== 'other') {
-    return `${getRoleLabel(jamoInfo.roleKey, roleLabels)} ${jamoInfo.display || tokenChar}`
+    return `${getRoleLabel(jamoInfo.roleKey, roleLabels)} ${displayChar}`
   }
-  return jamoInfo.display || tokenChar
+  return displayChar
 }
 
 export const getChapterSevenProbValueHeatmapStyle = (probability, minProbability, maxProbability) => {

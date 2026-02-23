@@ -1,15 +1,16 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import gsap from 'gsap'
-import { CHAPTER_TWO_BG_BASE_JAMO, CHAPTER_TWO_LAYER_DEPTHS } from './shared/chapterConstants'
+import { CHAPTER_TWO_BG_BASE_TOKENS_BY_LANG, CHAPTER_TWO_LAYER_DEPTHS } from './shared/chapterConstants'
 import { getJamoCloudPosition } from './shared/chapterUtils'
 
-function ChapterTwoJamoCloud({ reducedMotion, isMobile }) {
+function ChapterTwoJamoCloud({ reducedMotion, isMobile, exampleLanguage }) {
   const cloudRef = useRef(null)
   const layerRefs = useRef([])
+  const baseTokens = CHAPTER_TWO_BG_BASE_TOKENS_BY_LANG[exampleLanguage] ?? CHAPTER_TWO_BG_BASE_TOKENS_BY_LANG.ko
   const cloudItems = useMemo(() => {
     const itemCount = isMobile ? 30 : 45
     return Array.from({ length: itemCount }, (_, index) => {
-      const char = CHAPTER_TWO_BG_BASE_JAMO[index % CHAPTER_TWO_BG_BASE_JAMO.length]
+      const char = baseTokens[index % baseTokens.length]
       const rotate = (((index * 37) % 19) - 9) * 1.25
       return {
         id: `jamo-${index}-${char}`,
@@ -17,7 +18,7 @@ function ChapterTwoJamoCloud({ reducedMotion, isMobile }) {
         rotate,
       }
     })
-  }, [isMobile])
+  }, [baseTokens, isMobile])
 
   useLayoutEffect(() => {
     if (!cloudRef.current || reducedMotion) {

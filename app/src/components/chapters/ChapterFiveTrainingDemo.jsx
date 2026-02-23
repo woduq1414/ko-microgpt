@@ -2,7 +2,6 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import gsap from 'gsap'
 import {
   ATTENTION_HIDDEN_PLACEHOLDER,
-  CHAPTER_FOUR_EXAMPLE_NAMES,
   EMBEDDING_NEGATIVE_BASE,
   EMBEDDING_NEGATIVE_STRONG,
   EMBEDDING_POSITIVE_BASE,
@@ -11,11 +10,11 @@ import {
 import {
   clamp,
   createRevealVector,
-  decomposeKoreanNameToNfdTokens,
+  decomposeNameToModelTokens,
   dotProduct,
+  formatTokenDisplayWithRole,
   getHeatColor,
   getInferenceTokenDisplay,
-  getRoleLabel,
   interpolateHexColor,
   matVec,
   rmsNormVector,
@@ -24,7 +23,7 @@ import {
 } from './shared/chapterUtils'
 import SectionStateCard from '../common/SectionStateCard'
 
-function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
+function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy, exampleNames = [], exampleLanguage = 'ko' }) {
   const tokenChars = useMemo(() => snapshot?.tokenizer?.uchars ?? [], [snapshot])
   const bos = Number(snapshot?.tokenizer?.bos ?? -1)
   const nEmbd = Number(snapshot?.n_embd ?? 0)
@@ -79,7 +78,19 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
   const timelineRef = useRef(null)
   const flowLayerRef = useRef(null)
   const valueTextClass = isMobile ? 'text-[11px]' : 'text-xs'
-  const currentExampleName = CHAPTER_FOUR_EXAMPLE_NAMES[exampleNameIndex]
+  const safeExampleNames = useMemo(() => {
+    const filtered = Array.isArray(exampleNames)
+      ? exampleNames
+          .map((name) => (typeof name === 'string' ? name.trim() : ''))
+          .filter(Boolean)
+      : []
+    return filtered.length ? filtered : ['']
+  }, [exampleNames])
+  const safeExampleNameIndex = safeExampleNames.length
+    ? ((exampleNameIndex % safeExampleNames.length) + safeExampleNames.length) % safeExampleNames.length
+    : 0
+  const currentExampleName = safeExampleNames[safeExampleNameIndex] ?? ''
+  const displayExampleName = exampleLanguage === 'en' ? currentExampleName.toUpperCase() : currentExampleName
 
   const hasMatrixShape = (matrix, rows, cols) =>
     Array.isArray(matrix) &&
@@ -115,7 +126,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
       return []
     }
 
-    const decomposition = decomposeKoreanNameToNfdTokens(currentExampleName)
+    const decomposition = decomposeNameToModelTokens(currentExampleName, exampleLanguage)
     const phonemeTokens = decomposition.tokens.flatMap((token, index) => {
       const tokenId = stoi[token.nfd]
       if (typeof tokenId !== 'number') {
@@ -125,7 +136,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
         {
           id: `phoneme-${index}`,
           tokenId,
-          label: `${getRoleLabel(token.roleKey, copy.roles)} ${token.display}`.trim(),
+          label: formatTokenDisplayWithRole(token, copy.roles, true),
           position: index + 1,
           isBos: false,
         },
@@ -139,7 +150,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
     ]
 
     return sequence.slice(0, Math.min(blockSize, sequence.length))
-  }, [blockSize, bos, copy.roles, currentExampleName, isShapeValid, stoi])
+  }, [blockSize, bos, copy.roles, currentExampleName, exampleLanguage, isShapeValid, stoi])
 
   const sumEmbeddingVectors = useMemo(() => {
     return modelSequence.map((item) => {
@@ -156,9 +167,9 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
   const formatChapterFiveTokenLabel = useCallback(
     (tokenId) => {
       const includeRole = !isMobile
-      return getInferenceTokenDisplay(tokenId, tokenChars, bos, includeRole, copy.roles)
+      return getInferenceTokenDisplay(tokenId, tokenChars, bos, includeRole, copy.roles, exampleLanguage)
     },
-    [bos, copy.roles, isMobile, tokenChars],
+    [bos, copy.roles, exampleLanguage, isMobile, tokenChars],
   )
 
   const trainingRows = useMemo(() => {
@@ -1077,7 +1088,10 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
   const moveExampleName = (direction) => {
     resetRevealStates()
     setExampleNameIndex((prevIndex) => {
-      return (prevIndex + direction + CHAPTER_FOUR_EXAMPLE_NAMES.length) % CHAPTER_FOUR_EXAMPLE_NAMES.length
+      if (safeExampleNames.length <= 1) {
+        return 0
+      }
+      return (prevIndex + direction + safeExampleNames.length) % safeExampleNames.length
     })
     setTargetIndex(0)
     setAnimationTick((prevTick) => prevTick + 1)
@@ -1189,7 +1203,7 @@ function ChapterFiveTrainingDemo({ snapshot, reducedMotion, isMobile, copy }) {
               <span className="attention-nav-arrow-shape attention-nav-arrow-shape-left" />
             </button>
             <p className="attention-nav-pill">
-              <span className="attention-nav-pill-char">{currentExampleName}</span>
+              <span className="attention-nav-pill-char">{displayExampleName || '-'}</span>
               <span className="attention-nav-pill-meta">{`POS 0 ~ ${Math.max(0, trainingRows.length - 1)}`}</span>
             </p>
             <button type="button" className="attention-nav-arrow" onClick={() => moveExampleName(1)} aria-label={copy.chapter5.nextExampleNameAria}>
