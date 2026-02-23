@@ -1,0 +1,80 @@
+export const CHAPTER_ONE_NAMES = [
+  '민준',
+  '나영',
+  '아희',
+  '지혜',
+  '시연',
+  '규민',
+  '승민',
+  '희태',
+  '준식',
+  '서준',
+  '도윤',
+  '예준',
+  '시우',
+  '주원',
+  '하준',
+  '지호',
+  '지후',
+  '준우',
+  '현우',
+  '준서',
+  '도현',
+  '지훈',
+  '건우',
+  '우진',
+  '선우',
+  '민재',
+  '현준',
+  '유준',
+  '서진',
+  '연우',
+  '은우',
+  '정우',
+  '시윤',
+  '준혁',
+  '승현',
+  '이준',
+  '승우',
+  '지환',
+  '민성',
+  '윤우',
+]
+
+export const CHAPTER_TWO_EXAMPLE_NAMES = ['시연', '민준', '나영', '지혜', '승민', '하율', '아희', '유성']
+export const CHAPTER_FOUR_EXAMPLE_NAMES = ['시연', '민준', '나영', '지혜', '승민', '하율', '아희', '유성']
+export const CHOSEONG_COMPAT = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+export const JUNGSEONG_COMPAT = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ']
+export const JONGSEONG_COMPAT = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+export const HANGUL_SYLLABLE_START = 0xac00
+export const HANGUL_SYLLABLE_END = 0xd7a3
+
+export const LAYER_DEPTHS = [1, 1.6, 2.2]
+export const CHAPTER_TWO_LAYER_DEPTHS = [0.65, 1.0, 1.35]
+export const ROTATION_STEPS = [-6, -3, -1, 1, 3, 6]
+export const SIZE_CLASSES = ['text-base', 'text-lg', 'text-xl']
+export const CHAPTER_TWO_BG_BASE_JAMO = [...CHOSEONG_COMPAT, ...JUNGSEONG_COMPAT]
+export const EMBEDDING_POSITIVE_BASE = '#e9fce9'
+export const EMBEDDING_POSITIVE_STRONG = '#22c55e'
+export const EMBEDDING_NEGATIVE_BASE = '#feeaea'
+export const EMBEDDING_NEGATIVE_STRONG = '#ef4444'
+export const ATTENTION_HIDDEN_PLACEHOLDER = '····'
+export const LOGIT_PARTIAL_COMMIT_STEP = 2
+export const CHAPTER_SIX_DEFAULT_STEP_OPTIONS = [50, 100, 500, 1000]
+export const CHAPTER_SIX_AUTOPLAY_INTERVAL_MS = 30
+export const CHAPTER_SIX_FLOW_DURATION_SCALE = 1
+export const CHAPTER_SIX_LOSS_CHART_WIDTH = 320
+export const CHAPTER_SIX_LOSS_CHART_HEIGHT = 104
+export const CHAPTER_SEVEN_QUEUE_LIMIT = 10
+export const CHAPTER_SEVEN_MIN_TEMPERATURE = 0.1
+export const CHAPTER_SEVEN_MAX_TEMPERATURE = 1.5
+export const CHAPTER_SEVEN_DEFAULT_TEMPERATURE = 0.5
+export const CHAPTER_SEVEN_TEMPERATURE_STEP = 0.1
+export const CHAPTER_SEVEN_EMPTY_RETRY_LIMIT = 24
+export const CHAPTER_SEVEN_PHASE_SPEED_MULTIPLIER = 2.4
+export const CHAPTER_SEVEN_PHASE_INPUT_MS = Math.round(320 / CHAPTER_SEVEN_PHASE_SPEED_MULTIPLIER)
+export const CHAPTER_SEVEN_PHASE_PROB_MS = Math.round(420 / CHAPTER_SEVEN_PHASE_SPEED_MULTIPLIER)
+export const CHAPTER_SEVEN_PHASE_SAMPLE_MS = Math.round(380 / CHAPTER_SEVEN_PHASE_SPEED_MULTIPLIER)
+export const CHAPTER_SEVEN_PHASE_HOLD_MS = Math.round(220 / CHAPTER_SEVEN_PHASE_SPEED_MULTIPLIER)
+export const CHAPTER_SEVEN_QUEUE_STAGGER_MS = 140
+export const CHAPTER_SEVEN_QUEUE_ENTER_ANIM_MS = 320
