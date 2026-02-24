@@ -1669,7 +1669,7 @@ function ChapterFourAttentionDemo({
       for (let dimIndex = 0; dimIndex < nEmbd; dimIndex += 1) {
         const at = rowBase + dimIndex * stageJInputSpacing
         spawnTransfer(blockOutputCellRefs.current[dimIndex], logitValueRefs.current[rowIndex], at, 'w', {
-          beamOpacity: 0.24,
+          beamOpacity: 0.44,
           dotOpacity: 0.36,
           lightweight: true,
         })
