@@ -4323,6 +4323,7 @@ a {
   font-size: 0.65rem;
   font-weight: 900;
   letter-spacing: 0.12em;
+  margin-top: 0.2rem;
   text-transform: uppercase;
 }
 
@@ -4336,6 +4337,7 @@ a {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1;
+  height: 1.36rem;
 }
 
 .attention-stage-replay-btn {
@@ -5294,19 +5296,21 @@ a {
 
   .attention-stage-title {
     font-size: 0.58rem;
+    margin-top: 0.2rem;
   }
 
   .attention-stage-badge {
     height: 1.36rem;
     font-size: 0.52rem;
     padding: 0.14rem 0.28rem;
+    line-height: 0.68rem;
   }
 
   .attention-stage-replay-btn {
-    width: 1.24rem;
-    min-width: 1.24rem;
-    height: 1.24rem;
-    min-height: 1.24rem;
+    width: 1.36rem;
+    min-width: 1.36rem;
+    height: 1.36rem;
+    min-height: 1.36rem;
   }
 
   .attention-stage-replay-icon {
