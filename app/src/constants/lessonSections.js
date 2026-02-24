@@ -380,32 +380,32 @@ const LESSON_SECTION_OVERRIDES_BY_EXAMPLE_LANG = {
           {
             topic: 'Data',
             similarity: 'Both learn text distributions to predict the next token, and data quality strongly impacts model quality.',
-            difference: 'microgpt uses a small name dataset, while real GPT trains on trillion-scale corpora from web/books/code after deduplication, quality filtering, and domain mixing.',
+            difference: 'Microgpt uses a small name dataset, while real GPT trains on trillion-scale corpora from web/books/code after deduplication, quality filtering, and domain mixing.',
           },
           {
             topic: 'Tokenization',
             similarity: 'Both convert strings into integer token sequences and then embeddings.',
-            difference: 'microgpt uses character-level tokenization with a small vocabulary, while real GPT uses BPE-family subword tokenizers with around ~100k vocabulary.',
+            difference: 'Microgpt uses character-level tokenization with a small vocabulary, while real GPT uses BPE-family subword tokenizers with around ~100k vocabulary.',
           },
           {
             topic: 'Embedding',
             similarity: 'Both combine token embedding and position information into transformer input representations.',
-            difference: 'microgpt focuses on low-dimensional dense embeddings, while real GPT combines high-dimensional embeddings, RoPE, and normalization/scaling strategies for long-context stability.',
+            difference: 'Microgpt focuses on low-dimensional dense embeddings, while real GPT combines high-dimensional embeddings, RoPE, and normalization/scaling strategies for long-context stability.',
           },
           {
             topic: 'Model Architecture',
             similarity: 'Both share transformer blocks built from Attention, MLP, and residual connections.',
-            difference: 'microgpt is around thousands of parameters and one layer, while real GPT scales to hundreds of billions of parameters and hundreds of layers with optimizations like GQA, gated activations, and MoE.',
+            difference: 'Microgpt is around thousands of parameters and one layer, while real GPT scales to hundreds of billions of parameters and hundreds of layers with optimizations like GQA, gated activations, and MoE.',
           },
           {
             topic: 'Training Method',
             similarity: 'Both update parameters through backpropagation and Adam-family optimizers to minimize loss.',
-            difference: 'real GPT uses post-training (SFT and preference optimization such as RLHF/RLAIF) after large-scale pretraining to improve instruction-following, response quality, and safety alignment.',
+            difference: 'Real GPT uses post-training (SFT and preference optimization such as RLHF/RLAIF) after large-scale pretraining to improve instruction-following, response quality, and safety alignment.',
           },
           {
             topic: 'Inference',
             similarity: 'Both generate tokens autoregressively one step at a time.',
-            difference: 'real GPT requires a separate large-scale inference stack combining batching, KV cache paging, quantization, speculative decoding, and multi-GPU distributed serving.',
+            difference: 'Real GPT requires a separate large-scale inference stack combining batching, KV cache paging, quantization, speculative decoding, and multi-GPU distributed serving.',
           },
         ],
       },
