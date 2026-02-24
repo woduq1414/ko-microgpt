@@ -20,6 +20,18 @@ import {
   softmaxNumbers,
 } from './shared/chapterUtils'
 
+const STAGE_REPLAY_KEYS = [
+  'stage-qkv',
+  'stage-weights',
+  'stage-output',
+  'stage-heads',
+  'stage-mha',
+  'stage-result',
+  'stage-block-output',
+  'stage-logit',
+  'stage-prob',
+]
+
 function ChapterFourAttentionDemo({
   snapshot,
   attention,
@@ -51,6 +63,7 @@ function ChapterFourAttentionDemo({
   const [animationTick, setAnimationTick] = useState(1)
   const [isAnimating, setIsAnimating] = useState(false)
   const [skipAnimations, setSkipAnimations] = useState(false)
+  const [animationScope, setAnimationScope] = useState('all')
   const [outputStep, setOutputStep] = useState(0)
   const [revealedXDims, setRevealedXDims] = useState([])
   const [revealedQDims, setRevealedQDims] = useState([])
@@ -123,8 +136,8 @@ function ChapterFourAttentionDemo({
   const safeExampleNames = useMemo(() => {
     const filtered = Array.isArray(exampleNames)
       ? exampleNames
-          .map((name) => (typeof name === 'string' ? name.trim() : ''))
-          .filter(Boolean)
+        .map((name) => (typeof name === 'string' ? name.trim() : ''))
+        .filter(Boolean)
       : []
     return filtered.length ? filtered : ['']
   }, [exampleNames])
@@ -194,7 +207,7 @@ function ChapterFourAttentionDemo({
 
     const onPointerDown = (event) => {
       const target = event.target
-      if (target instanceof Element && target.closest('.attention-help-wrap')) {
+      if (target instanceof Element && target.closest('.attention-help-')) {
         return
       }
       setOpenInfoKey(null)
@@ -645,10 +658,12 @@ function ChapterFourAttentionDemo({
       setRevealedProbRows(createRevealVector(selectedTokenRows.length))
     }
 
-    const showFinalStateImmediately = () => {
+    const showFinalStateImmediately = ({ markAnimationDone = true, traceReady = true } = {}) => {
       setOutputStep(totalSteps)
-      setIsAnimating(false)
-      setIsTraceReady(true)
+      if (markAnimationDone) {
+        setIsAnimating(false)
+      }
+      setIsTraceReady(traceReady)
       setDisplayedWeights(weightRows.map((row) => Number(row.value ?? 0)))
       setDisplayedOutput(attentionOutput)
       setDisplayedMhaOutput(mhaOutputVector)
@@ -672,6 +687,52 @@ function ChapterFourAttentionDemo({
       setRevealedBlockOutputDims(Array.from({ length: nEmbd }, () => true))
       setRevealedLogitRows(Array.from({ length: selectedTokenRows.length }, () => true))
       setRevealedProbRows(Array.from({ length: selectedTokenRows.length }, () => true))
+    }
+
+    const resetReplayStageState = (scope) => {
+      switch (scope) {
+        case 'stage-qkv':
+          setRevealedQDims(createRevealVector(headDim))
+          setRevealedKCells(createRevealMatrixWithVisibleRows(keyRows.length, headDim, currentKeyRowIndex))
+          setRevealedVCells(createRevealMatrixWithVisibleRows(valueRows.length, headDim, currentKeyRowIndex))
+          return
+        case 'stage-weights':
+          setRevealedWeights(createRevealVector(weightRows.length))
+          setDisplayedWeights(Array.from({ length: weightRows.length }, () => 0))
+          return
+        case 'stage-output':
+          setOutputStep(0)
+          setRevealedContribCells(createRevealMatrix(weightedVRows.length, headDim))
+          setRevealedOutputDims(createRevealVector(headDim))
+          setDisplayedOutput(Array.from({ length: headDim }, () => 0))
+          return
+        case 'stage-heads':
+          setRevealedHeadOutputCells(createRevealMatrix(nHead, headDim))
+          return
+        case 'stage-mha':
+          setRevealedMhaInputDims(createRevealVector(nEmbd))
+          setRevealedMhaOutputDims(createRevealVector(nEmbd))
+          setDisplayedMhaOutput(Array.from({ length: nEmbd }, () => 0))
+          return
+        case 'stage-result':
+          setRevealedResultDims(createRevealVector(nEmbd))
+          setDisplayedResultVector(Array.from({ length: nEmbd }, () => 0))
+          return
+        case 'stage-block-output':
+          setRevealedBlockOutputDims(createRevealVector(nEmbd))
+          setDisplayedBlockOutputVector(Array.from({ length: nEmbd }, () => 0))
+          return
+        case 'stage-logit':
+          setRevealedLogitRows(createRevealVector(selectedTokenRows.length))
+          setDisplayedLogits(Array.from({ length: selectedTokenRows.length }, () => 0))
+          return
+        case 'stage-prob':
+          setRevealedProbRows(createRevealVector(selectedTokenRows.length))
+          setDisplayedProbs(Array.from({ length: selectedTokenRows.length }, () => 0))
+          return
+        default:
+          return
+      }
     }
 
     const revealVectorIndex = (setter, index) => {
@@ -798,43 +859,43 @@ function ChapterFourAttentionDemo({
       const cellGridNodes = (grid) => {
         return grid.flatMap((row) => (Array.isArray(row) ? row : [row])).filter(Boolean)
       }
-      ;[
-        xVectorRef.current,
-        ...kRowRefs.current,
-        ...vRowRefs.current,
-        ...weightRowRefs.current,
-        ...contribRowRefs.current,
-        ...headOutputRowRefs.current,
-        qVectorRef.current,
-        outputVectorRef.current,
-        mhaInputRowRef.current,
-        mhaOutputRowRef.current,
-        resultRowRef.current,
-        blockOutputRowRef.current,
-        ...logitRowRefs.current,
-        ...probRowRefs.current,
-        ...xValueRefs.current,
-        ...qCellRefs.current,
-        ...cellGridNodes(kCellRefs.current),
-        ...cellGridNodes(vCellRefs.current),
-        ...weightValueRefs.current,
-        ...cellGridNodes(contribCellRefs.current),
-        ...outputCellRefs.current,
-        ...cellGridNodes(headOutputCellRefs.current),
-        ...headSummaryQRefs.current,
-        ...headSummaryKRefs.current,
-        ...headSummaryVRefs.current,
-        ...mhaInputCellRefs.current,
-        ...mhaOutputCellRefs.current,
-        ...resultCellRefs.current,
-        ...blockOutputCellRefs.current,
-        ...logitValueRefs.current,
-        ...probValueRefs.current,
-      ]
-        .filter(Boolean)
-        .forEach((node) => {
-          classNames.forEach((className) => node.classList.remove(className))
-        })
+        ;[
+          xVectorRef.current,
+          ...kRowRefs.current,
+          ...vRowRefs.current,
+          ...weightRowRefs.current,
+          ...contribRowRefs.current,
+          ...headOutputRowRefs.current,
+          qVectorRef.current,
+          outputVectorRef.current,
+          mhaInputRowRef.current,
+          mhaOutputRowRef.current,
+          resultRowRef.current,
+          blockOutputRowRef.current,
+          ...logitRowRefs.current,
+          ...probRowRefs.current,
+          ...xValueRefs.current,
+          ...qCellRefs.current,
+          ...cellGridNodes(kCellRefs.current),
+          ...cellGridNodes(vCellRefs.current),
+          ...weightValueRefs.current,
+          ...cellGridNodes(contribCellRefs.current),
+          ...outputCellRefs.current,
+          ...cellGridNodes(headOutputCellRefs.current),
+          ...headSummaryQRefs.current,
+          ...headSummaryKRefs.current,
+          ...headSummaryVRefs.current,
+          ...mhaInputCellRefs.current,
+          ...mhaOutputCellRefs.current,
+          ...resultCellRefs.current,
+          ...blockOutputCellRefs.current,
+          ...logitValueRefs.current,
+          ...probValueRefs.current,
+        ]
+          .filter(Boolean)
+          .forEach((node) => {
+            classNames.forEach((className) => node.classList.remove(className))
+          })
     }
 
     flowLayer.innerHTML = ''
@@ -860,20 +921,25 @@ function ChapterFourAttentionDemo({
       }
     }
 
-    resetRevealState()
-
     const currentKNode = kRowRefs.current[keyRows.length - 1]
     const currentVNode = vRowRefs.current[valueRows.length - 1]
     const flowLayerRect = flowLayer.getBoundingClientRect()
     const centerPointCache = new Map()
     const createdNodes = []
+    const clearTransientAnimationArtifacts = () => {
+      createdNodes.forEach((node) => node.remove())
+      createdNodes.length = 0
+      flowLayer.innerHTML = ''
+      clearTempClasses()
+    }
     const timeline = gsap.timeline({
+      paused: true,
       onStart: () => {
         setIsAnimating(true)
       },
       onComplete: () => {
         showFinalStateImmediately()
-        setIsAnimating(false)
+        clearTransientAnimationArtifacts()
       },
     })
     timelineRef.current = timeline
@@ -1141,6 +1207,36 @@ function ChapterFourAttentionDemo({
       }, null, startAt)
     }
 
+    const playTimelineForScope = (scopeRanges) => {
+      if (animationScope === 'all') {
+        resetRevealState()
+        timeline.play(0)
+        return
+      }
+
+      const targetRange = scopeRanges[animationScope]
+      if (!targetRange) {
+        resetRevealState()
+        timeline.play(0)
+        return
+      }
+
+      showFinalStateImmediately({ markAnimationDone: false, traceReady: false })
+      resetReplayStageState(animationScope)
+      const safeStart = Math.max(0, Number(targetRange.start) || 0)
+      const safeEnd = Number.isFinite(targetRange.end) ? Number(targetRange.end) : timeline.duration()
+      timeline.tweenFromTo(safeStart, Math.max(safeStart, safeEnd), {
+        onStart: () => {
+          setIsAnimating(true)
+          setIsTraceReady(false)
+        },
+        onComplete: () => {
+          showFinalStateImmediately()
+          clearTransientAnimationArtifacts()
+        },
+      })
+    }
+
     if (reducedMotion) {
       const reducedStart = 0.04
       addClassPulse(xVectorRef.current, 'attention-row--active', reducedStart, 0.16)
@@ -1349,12 +1445,22 @@ function ChapterFourAttentionDemo({
         addClassPulse(probRowRefs.current[rowIndex], 'attention-row--active', at + 0.01, 0.1)
       })
 
+      playTimelineForScope({
+        'stage-qkv': { start: reducedStart, end: weightStageStart },
+        'stage-weights': { start: weightStageStart, end: outputStageStart },
+        'stage-output': { start: outputStageStart, end: headStageStart },
+        'stage-heads': { start: headStageStart, end: concatStageStart },
+        'stage-mha': { start: concatStageStart, end: resultStageStart },
+        'stage-result': { start: resultStageStart, end: mlpStageStart },
+        'stage-block-output': { start: mlpStageStart, end: logitStageStart },
+        'stage-logit': { start: logitStageStart, end: softmaxStageStart },
+        'stage-prob': { start: softmaxStageStart, end: timeline.duration() },
+      })
+
       return () => {
         timeline.kill()
         timelineRef.current = null
-        createdNodes.forEach((node) => node.remove())
-        flowLayer.innerHTML = ''
-        clearTempClasses()
+        clearTransientAnimationArtifacts()
       }
     }
 
@@ -1596,14 +1702,24 @@ function ChapterFourAttentionDemo({
       addClassPulse(probRowRefs.current[rowIndex], 'attention-row--active', at + 0.065, 0.13)
     })
 
+    playTimelineForScope({
+      'stage-qkv': { start: stageBStart, end: stageCStart },
+      'stage-weights': { start: stageCStart, end: stageDStart },
+      'stage-output': { start: stageDStart, end: stageEStart },
+      'stage-heads': { start: stageEStart, end: stageGStart },
+      'stage-mha': { start: stageGStart, end: stageHStart },
+      'stage-result': { start: stageHStart, end: stageIStart },
+      'stage-block-output': { start: stageIStart, end: stageJStart },
+      'stage-logit': { start: stageJStart, end: stageKStart },
+      'stage-prob': { start: stageKStart, end: timeline.duration() },
+    })
+
     return () => {
       timeline.kill()
       timelineRef.current = null
-      createdNodes.forEach((node) => node.remove())
-      flowLayer.innerHTML = ''
-      clearTempClasses()
+      clearTransientAnimationArtifacts()
     }
-  }, [animationTick, animationSignature, currentXRows.length, hasAttentionData, headDim, nEmbd, nHead, reducedMotion, skipAnimations]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animationScope, animationTick, animationSignature, currentXRows.length, hasAttentionData, headDim, nEmbd, nHead, reducedMotion, skipAnimations]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     const traceLayerNode = traceLayerRef.current
@@ -1763,12 +1879,10 @@ function ChapterFourAttentionDemo({
       const xPoint = getPoint(topXNode, 'center', 'bottom')
       const resultPoint = getPoint(resultNode, 'center', 'top')
 
-      const topToHead = `M ${topOutPoint.x} ${topOutPoint.y} C ${topOutPoint.x} ${topOutPoint.y + 42}, ${headPoint.x} ${
-        headPoint.y - 42
-      }, ${headPoint.x} ${headPoint.y}`
-      const xToResult = `M ${xPoint.x} ${xPoint.y} C ${xPoint.x - 110} ${xPoint.y + 92}, ${resultPoint.x - 40} ${
-        resultPoint.y - 92
-      }, ${resultPoint.x} ${resultPoint.y}`
+      const topToHead = `M ${topOutPoint.x} ${topOutPoint.y} C ${topOutPoint.x} ${topOutPoint.y + 42}, ${headPoint.x} ${headPoint.y - 42
+        }, ${headPoint.x} ${headPoint.y}`
+      const xToResult = `M ${xPoint.x} ${xPoint.y} C ${xPoint.x - 110} ${xPoint.y + 92}, ${resultPoint.x - 40} ${resultPoint.y - 92
+        }, ${resultPoint.x} ${resultPoint.y}`
 
       bridgeLayerNode.setAttribute('viewBox', `0 0 ${Math.max(1, rootRect.width)} ${Math.max(1, rootRect.height)}`)
       topPathNode?.setAttribute('d', topToHead)
@@ -1790,6 +1904,7 @@ function ChapterFourAttentionDemo({
       }
       return (prevIndex + direction + safeExampleNames.length) % safeExampleNames.length
     })
+    setAnimationScope('all')
     setActiveTraceTarget(null)
     setIsTraceReady(false)
     setQueryIndex(0)
@@ -1801,6 +1916,18 @@ function ChapterFourAttentionDemo({
     setQueryIndex((prevIndex) => {
       return clamp(prevIndex + direction, 0, Math.max(0, modelSequence.length - 1))
     })
+    setAnimationScope('all')
+    setActiveTraceTarget(null)
+    setIsTraceReady(false)
+    setOpenInfoKey(null)
+    setAnimationTick((prevTick) => prevTick + 1)
+  }
+
+  const triggerReplay = (scope = 'all') => {
+    if (skipAnimations) {
+      return
+    }
+    setAnimationScope(scope)
     setActiveTraceTarget(null)
     setIsTraceReady(false)
     setOpenInfoKey(null)
@@ -1808,16 +1935,11 @@ function ChapterFourAttentionDemo({
   }
 
   const replayAnimation = () => {
-    if (skipAnimations) {
-      return
-    }
-    setActiveTraceTarget(null)
-    setIsTraceReady(false)
-    setOpenInfoKey(null)
-    setAnimationTick((prevTick) => prevTick + 1)
+    triggerReplay('all')
   }
 
   const toggleSkipAnimations = () => {
+    setAnimationScope('all')
     setActiveTraceTarget(null)
     setIsTraceReady(false)
     setOpenInfoKey(null)
@@ -1849,9 +1971,8 @@ function ChapterFourAttentionDemo({
             <span
               key={`${keyPrefix}-${dimIndex}`}
               ref={cellRefFactory ? cellRefFactory(dimIndex) : undefined}
-              className={`attention-cell ${dense ? 'attention-cell--dense' : ''} ${cellClassName} ${
-                isVisible ? '' : `attention-cell--hidden ${hiddenClassName}`
-              } ${traceProps?.className ?? ''} ${valueTextClass}`.trim()}
+              className={`attention-cell ${dense ? 'attention-cell--dense' : ''} ${cellClassName} ${isVisible ? '' : `attention-cell--hidden ${hiddenClassName}`
+                } ${traceProps?.className ?? ''} ${valueTextClass}`.trim()}
               onClick={traceProps?.onClick}
               onKeyDown={traceProps?.onKeyDown}
               tabIndex={traceProps?.tabIndex}
@@ -1899,9 +2020,8 @@ function ChapterFourAttentionDemo({
               </span>
               <span
                 ref={cellRefFactory ? cellRefFactory(dimIndex) : undefined}
-                className={`attention-vector-line-value attention-cell ${dense ? 'attention-vector-line-value--dense16' : ''} ${
-                  isVisible ? '' : `attention-value--hidden ${hiddenClassName}`
-                } ${traceProps?.className ?? ''} ${valueTextClass}`.trim()}
+                className={`attention-vector-line-value attention-cell ${dense ? 'attention-vector-line-value--dense16' : ''} ${isVisible ? '' : `attention-value--hidden ${hiddenClassName}`
+                  } ${traceProps?.className ?? ''} ${valueTextClass}`.trim()}
                 onClick={traceProps?.onClick}
                 onKeyDown={traceProps?.onKeyDown}
                 tabIndex={traceProps?.tabIndex}
@@ -1923,11 +2043,37 @@ function ChapterFourAttentionDemo({
 
   const renderStageHead = ({ key, title, infoTitle, infoBody, badge = '' }) => {
     const isInfoOpen = openInfoKey === key
+    const canReplayStage = STAGE_REPLAY_KEYS.includes(key)
+    const isStageReplayActive = isAnimating && animationScope === key
     return (
       <div className="attention-stage-head">
         <p className="attention-stage-title">{title}</p>
         <div className="attention-stage-head-right">
           {badge ? <span className="attention-stage-badge">{badge}</span> : null}
+          {canReplayStage ? (
+            <button
+              type="button"
+              className={`attention-stage-replay-btn ${isStageReplayActive ? 'attention-stage-replay-btn--active' : ''}`}
+              onClick={() => triggerReplay(key)}
+              aria-label={copy.chapter4.replayStageAria(title)}
+              aria-disabled={skipAnimations}
+              disabled={skipAnimations}
+            >
+
+              <svg viewBox="0 0 24 24" className="attention-stage-replay-icon" aria-hidden="true" focusable="false">
+                <g clip-path="url(#clip0_429_11071)">
+                  <path d="M12 2.99982C16.9706 2.99982 21 7.02925 21 11.9998C21 16.9704 16.9706 20.9998 12 20.9998C7.02944 20.9998 3 16.9704 3 11.9998C3 9.17255 4.30367 6.64977 6.34267 4.99982" stroke="black" 
+                  stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M3 4.49982H7V8.49982" stroke="black" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+                </g>
+                <defs>
+                  <clipPath id="clip0_429_11071">
+                    <rect width="24" height="24" fill="white" />
+                  </clipPath>
+                </defs>
+              </svg>
+            </button>
+          ) : null}
           <div className="attention-help-wrap">
             <button
               type="button"
@@ -2019,13 +2165,13 @@ function ChapterFourAttentionDemo({
 
         <button
           type="button"
-          className={`attention-replay-btn ${isAnimating ? 'attention-replay-btn--active' : ''}`}
+          className={`attention-replay-btn ${isAnimating && animationScope === 'all' ? 'attention-replay-btn--active' : ''}`}
           onClick={replayAnimation}
           aria-label={copy.chapter4.replayAria}
           aria-disabled={skipAnimations}
           disabled={skipAnimations}
         >
-          {isAnimating ? 'PLAYING...' : 'REPLAY'}
+          {isAnimating && animationScope === 'all' ? 'PLAYING...' : 'REPLAY'}
         </button>
 
         <button
@@ -2066,9 +2212,8 @@ function ChapterFourAttentionDemo({
                             ref={(node) => {
                               xValueRefs.current[row.dim] = node
                             }}
-                            className={`attention-vector-line-value ${!isVisible ? 'attention-value--hidden' : ''} ${
-                              traceProps.className
-                            } ${valueTextClass}`.trim()}
+                            className={`attention-vector-line-value ${!isVisible ? 'attention-value--hidden' : ''} ${traceProps.className
+                              } ${valueTextClass}`.trim()}
                             onClick={traceProps.onClick}
                             onKeyDown={traceProps.onKeyDown}
                             tabIndex={traceProps.tabIndex}
@@ -2223,9 +2368,8 @@ function ChapterFourAttentionDemo({
                           ref={(node) => {
                             weightValueRefs.current[rowIndex] = node
                           }}
-                          className={`attention-weight-values ${!isVisible ? 'attention-weight-value--hidden' : ''} ${
-                            traceProps.className
-                          } ${valueTextClass}`.trim()}
+                          className={`attention-weight-values ${!isVisible ? 'attention-weight-value--hidden' : ''} ${traceProps.className
+                            } ${valueTextClass}`.trim()}
                           onClick={traceProps.onClick}
                           onKeyDown={traceProps.onKeyDown}
                           tabIndex={traceProps.tabIndex}
@@ -2468,9 +2612,8 @@ function ChapterFourAttentionDemo({
                           className="attention-token-row attention-row"
                         >
                           <span
-                            className={`attention-token-meta ${
-                              !isVisible ? 'attention-token-meta--hidden' : ''
-                            } ${valueTextClass}`.trim()}
+                            className={`attention-token-meta ${!isVisible ? 'attention-token-meta--hidden' : ''
+                              } ${valueTextClass}`.trim()}
                           >
                             {isVisible ? tokenLabel : ATTENTION_HIDDEN_PLACEHOLDER}
                           </span>
@@ -2478,9 +2621,8 @@ function ChapterFourAttentionDemo({
                             ref={(node) => {
                               logitValueRefs.current[rowIndex] = node
                             }}
-                            className={`attention-token-value ${
-                              !isVisible ? 'attention-weight-value--hidden' : ''
-                            } ${traceProps.className} ${valueTextClass}`.trim()}
+                            className={`attention-token-value ${!isVisible ? 'attention-weight-value--hidden' : ''
+                              } ${traceProps.className} ${valueTextClass}`.trim()}
                             onClick={traceProps.onClick}
                             onKeyDown={traceProps.onKeyDown}
                             tabIndex={traceProps.tabIndex}
@@ -2533,9 +2675,8 @@ function ChapterFourAttentionDemo({
                           className="attention-token-row attention-row"
                         >
                           <span
-                            className={`attention-token-meta ${
-                              !isVisible ? 'attention-token-meta--hidden' : ''
-                            } ${valueTextClass}`.trim()}
+                            className={`attention-token-meta ${!isVisible ? 'attention-token-meta--hidden' : ''
+                              } ${valueTextClass}`.trim()}
                           >
                             {isVisible ? tokenLabel : ATTENTION_HIDDEN_PLACEHOLDER}
                           </span>
@@ -2543,9 +2684,8 @@ function ChapterFourAttentionDemo({
                             ref={(node) => {
                               probValueRefs.current[rowIndex] = node
                             }}
-                            className={`attention-token-value ${
-                              !isVisible ? 'attention-weight-value--hidden' : ''
-                            } ${traceProps.className} ${valueTextClass}`.trim()}
+                            className={`attention-token-value ${!isVisible ? 'attention-weight-value--hidden' : ''
+                              } ${traceProps.className} ${valueTextClass}`.trim()}
                             onClick={traceProps.onClick}
                             onKeyDown={traceProps.onKeyDown}
                             tabIndex={traceProps.tabIndex}

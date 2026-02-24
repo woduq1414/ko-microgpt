@@ -4313,8 +4313,9 @@ a {
 
 .attention-stage-head-right {
   display: inline-flex;
-  align-items: center;
+  align-items: end;
   gap: 0.35rem;
+  margin-bottom : 0.05rem;
 }
 
 .attention-stage-title {
@@ -4337,6 +4338,69 @@ a {
   line-height: 1;
 }
 
+.attention-stage-replay-btn {
+  border: 3px solid #000;
+  background: #fff;
+  box-shadow: 3px 3px 0 0 #000;
+
+  width: 1.36rem;
+  min-width: 1.36rem;
+  height: 1.36rem;
+  min-height: 1.36rem;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  cursor: pointer;
+  transition:
+    transform 100ms linear,
+    box-shadow 100ms linear,
+    background-color 100ms linear;
+}
+
+.attention-stage-replay-icon {
+  width: 0.84rem;
+  height: 0.84rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.attention-stage-replay-btn:hover,
+.attention-stage-replay-btn:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 0 #000;
+  outline: none;
+}
+
+.attention-stage-replay-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.attention-stage-replay-btn:disabled {
+  cursor: not-allowed;
+  background: #f0f0f0;
+  color: #666;
+  box-shadow: 2px 2px 0 0 #000;
+  transform: none;
+}
+
+.attention-stage-replay-btn:disabled:hover,
+.attention-stage-replay-btn:disabled:focus-visible,
+.attention-stage-replay-btn:disabled:active {
+  transform: none;
+  box-shadow: 2px 2px 0 0 #000;
+  outline: none;
+}
+
+.attention-stage-replay-btn--active {
+  background: #ffd93d;
+}
+
 .attention-stage-body {
   margin-top: 0.35rem;
 }
@@ -4356,8 +4420,10 @@ a {
 }
 
 .attention-help-btn {
+
   width: 1.36rem;
   height: 1.36rem;
+
   border: 3px solid #000;
   background: #ffd93d;
   box-shadow: 3px 3px 0 0 #000;
@@ -5231,8 +5297,21 @@ a {
   }
 
   .attention-stage-badge {
+    height: 1.36rem;
     font-size: 0.52rem;
     padding: 0.14rem 0.28rem;
+  }
+
+  .attention-stage-replay-btn {
+    width: 1.24rem;
+    min-width: 1.24rem;
+    height: 1.24rem;
+    min-height: 1.24rem;
+  }
+
+  .attention-stage-replay-icon {
+    width: 0.74rem;
+    height: 0.74rem;
   }
 
   .attention-vector-line {

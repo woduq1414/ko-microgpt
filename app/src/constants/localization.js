@@ -151,6 +151,7 @@ export const COPY_BY_LANG = {
       prevTargetIndexAria: '이전 예시 인덱스',
       nextTargetIndexAria: '다음 예시 인덱스',
       replayAria: 'Attention 계산 애니메이션 다시 재생',
+      replayStageAria: (title) => `${title} 파생 애니메이션 다시 재생`,
       skipAria: 'Chapter 4 애니메이션 생략 모드 토글',
       finalEmbeddingInfoBody: '현재 Query 위치의 Final Embedding 벡터입니다. Q, K, V를 만드는 재료가 됩니다.',
       qkvInfoBody:
@@ -344,6 +345,7 @@ export const COPY_BY_LANG = {
       prevTargetIndexAria: 'Previous example index',
       nextTargetIndexAria: 'Next example index',
       replayAria: 'Replay Attention calculation animation',
+      replayStageAria: (title) => `Replay ${title} derivation animation`,
       skipAria: 'Toggle Chapter 4 animation skip mode',
       finalEmbeddingInfoBody: 'The Final Embedding vector at the current Query position. It is the source used to compute Q, K, and V.',
       qkvInfoBody:
