@@ -7,7 +7,7 @@ https://github.com/user-attachments/assets/640e72d0-0e29-48c8-8159-f6c4a831d394
 
 ## Summary
 
-This repo contains a Korean name generation model and an educational web app that visualizes and explains it, inspired by [microgpt](https://karpathy.github.io/2026/02/12/microgpt/) of [Karpathy](https://github.com/karpathy).
+This repo contains a Korean(and English) name generation model and an educational web app that visualizes and explains it, inspired by [microgpt](https://karpathy.github.io/2026/02/12/microgpt/) of [Karpathy](https://github.com/karpathy).
 Python assets for model training and inference are in `model/`, and the React frontend is in `app/`.
 
 ## Directory Overview
