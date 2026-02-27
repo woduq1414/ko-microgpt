@@ -3,6 +3,7 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { Analytics } from '@vercel/analytics/react'
 import AsyncChapterContent from './components/common/AsyncChapterContent'
+import ScrollToTopButton from './components/common/ScrollToTopButton'
 import ChapterOneDataCloud from './components/chapters/ChapterOneDataCloud'
 import ChapterTwoJamoCloud from './components/chapters/ChapterTwoJamoCloud'
 import ChapterTwoTokenizationDemo from './components/chapters/ChapterTwoTokenizationDemo'
@@ -419,6 +420,7 @@ function App() {
       >
         <div className="scroll-progress-fill h-full w-full origin-top scale-y-0 bg-neo-accent" />
       </div>
+      <ScrollToTopButton reducedMotion={reducedMotion} />
 
       <HeroSection
         exampleLanguage={exampleLanguage}

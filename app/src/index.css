@@ -90,6 +90,66 @@ a {
   outline-offset: 3px;
 }
 
+.scroll-top-fab {
+  position: fixed;
+  right: 2.7rem;
+  bottom: 1.7rem;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  border: 4px solid #000;
+  background: #ff6b6bee;
+  box-shadow: 3px 3px 0 0 #000;
+  padding: 0.2rem;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease,
+    box-shadow 100ms linear;
+}
+
+.scroll-top-fab__icon {
+  width: 1.4rem;
+  height: 1.4rem;
+  stroke: #000;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.scroll-top-fab--visible {
+  opacity: 1;
+  transform: translateY(0) rotate(-2deg);
+  pointer-events: auto;
+}
+
+.scroll-top-fab--hidden {
+  opacity: 0;
+  transform: translateY(16px) rotate(-2deg);
+  pointer-events: none;
+}
+
+.scroll-top-fab:hover,
+.scroll-top-fab:focus-visible {
+  transform: translate(-1px, -1px) rotate(-2deg);
+  box-shadow: 4px 4px 0 0 #000;
+  outline: none;
+}
+
+.scroll-top-fab:active {
+  transform: translate(2px, 2px) rotate(-2deg);
+  box-shadow: 0 0 0 0 #000;
+}
+
+.scroll-top-fab:focus-visible {
+  outline: 3px solid #000;
+  outline-offset: 3px;
+}
+
 .hero-control-cluster {
   position: absolute;
   top: 1rem;
@@ -466,6 +526,20 @@ a {
 }
 
 @media (max-width: 767px) {
+  .scroll-top-fab {
+    right: 0.75rem;
+    bottom: 0.75rem;
+    min-width: 2.7em;
+    min-height: 2.7rem;
+    padding: 0rem;
+    background: #ff6b6b;
+  }
+
+  .scroll-top-fab__icon {
+    width: 1.3rem;
+    height: 1.3rem;
+  }
+
   .hero-control-cluster {
     top: 0.75rem;
     right: 0.75rem;
@@ -4934,6 +5008,7 @@ a {
   .chapter-seven-path-arrow {
     flex: 0 0 auto;
   }
+
 }
 
 @media (max-width: 767px) {
