@@ -10,10 +10,10 @@ const normalizeLanguage = (value) => {
 
 export const getExampleLanguageFromPathname = (pathname) => {
   const normalizedPath = typeof pathname === 'string' ? pathname.toLowerCase() : ''
-  if (normalizedPath === '/en' || normalizedPath.startsWith('/en/')) {
-    return 'en'
+  if (normalizedPath === '/ko' || normalizedPath.startsWith('/ko/')) {
+    return 'ko'
   }
-  return 'ko'
+  return 'en'
 }
 
 export const getPathnameForExampleLanguage = (language) => {
