@@ -42,6 +42,7 @@ gsap.registerPlugin(ScrollTrigger)
 
 function App() {
   const pageRef = useRef(null)
+  const scrollProgressFillRef = useRef(null)
   const [exampleLanguage, setExampleLanguage] = useState(() => {
     if (typeof window === 'undefined') {
       return 'ko'
@@ -325,18 +326,6 @@ function App() {
           ease: 'power2.out',
         })
 
-        gsap.to('.scroll-progress-fill', {
-          scaleY: 1,
-          transformOrigin: 'top top',
-          ease: 'none',
-          scrollTrigger: {
-            trigger: pageRef.current,
-            start: 'top top',
-            end: 'bottom bottom',
-            scrub: true,
-          },
-        })
-
         gsap.utils.toArray('.edu-panel').forEach((panel, index) => {
           gsap.from(panel.querySelectorAll('.reveal'), {
             y: 90,
@@ -359,6 +348,55 @@ function App() {
       ctx?.revert()
     }
   }, [reducedMotion])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined
+    }
+
+    const fillNode = scrollProgressFillRef.current
+    if (!fillNode) {
+      return undefined
+    }
+
+    let rafId = 0
+    const docElement = document.documentElement
+    const body = document.body
+
+    const updateScrollProgress = () => {
+      rafId = 0
+      const maxScrollTop = Math.max(1, docElement.scrollHeight - window.innerHeight)
+      const currentScrollTop = Math.max(0, window.scrollY || docElement.scrollTop || 0)
+      const progress = Math.min(1, currentScrollTop / maxScrollTop)
+      fillNode.style.height = `${progress * 100}%`
+    }
+
+    const queueScrollProgressUpdate = () => {
+      if (rafId) {
+        return
+      }
+      rafId = window.requestAnimationFrame(updateScrollProgress)
+    }
+
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(queueScrollProgressUpdate)
+    resizeObserver?.observe(docElement)
+    if (body) {
+      resizeObserver?.observe(body)
+    }
+
+    window.addEventListener('scroll', queueScrollProgressUpdate, { passive: true })
+    window.addEventListener('resize', queueScrollProgressUpdate)
+    queueScrollProgressUpdate()
+
+    return () => {
+      window.removeEventListener('scroll', queueScrollProgressUpdate)
+      window.removeEventListener('resize', queueScrollProgressUpdate)
+      resizeObserver?.disconnect()
+      if (rafId) {
+        window.cancelAnimationFrame(rafId)
+      }
+    }
+  }, [])
 
   const chapterOneSection = lessonSections[0]
   const chapterTwoSection = lessonSections[1]
@@ -418,7 +456,7 @@ function App() {
         aria-hidden="true"
         className="pointer-events-none fixed right-4 top-6 z-50 hidden h-[calc(100vh-3rem)] w-4 border-4 border-black bg-white lg:block"
       >
-        <div className="scroll-progress-fill h-full w-full origin-top scale-y-0 bg-neo-accent" />
+        <div ref={scrollProgressFillRef} className="scroll-progress-fill absolute inset-x-0 top-0 h-0 bg-neo-accent" />
       </div>
       <ScrollToTopButton reducedMotion={reducedMotion} />
 
