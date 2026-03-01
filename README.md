@@ -43,3 +43,9 @@ python3 model/ko_inference.py
 <img width="2869" height="2289" alt="image" src="https://github.com/user-attachments/assets/4e287f1d-208d-4a92-8c28-af1f77dfdadc" />
 <img width="2865" height="2031" alt="image" src="https://github.com/user-attachments/assets/cfe0460e-7563-4092-9e38-11644098d152" />
 
+
+## Reference
+
+Microgpt Description - [https://karpathy.github.io/2026/02/12/microgpt/](https://karpathy.github.io/2026/02/12/microgpt/)
+
+Design Prompt - [https://www.designprompts.dev/](https://www.designprompts.dev/)
